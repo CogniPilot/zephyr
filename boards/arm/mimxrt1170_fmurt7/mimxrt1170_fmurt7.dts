@@ -14,7 +14,13 @@
 	compatible = "nxp,mimxrt1176";
 
 	aliases {
+		led0 = &green_led;
+		led1 = &red_led;
 		watchdog0 = &wdog1;
+		sdhc0 = &usdhc1;
+		gps1 = &lpuart2;
+		telem1 = &lpuart3;
+		telem4-gps2 = &lpuart5;
 	};
 
 	chosen {
