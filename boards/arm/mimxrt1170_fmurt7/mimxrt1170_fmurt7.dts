@@ -187,27 +187,30 @@
 	status = "okay";
 	pinctrl-0 = <&pinmux_flexcan1>;
 	pinctrl-names = "default";
-	bus-speed = <125000>;
+	bus-speed = <1000000>;
+	bus-speed-data = <4000000>;
 	can-transceiver {
 		max-bitrate = <5000000>;
 	};
 };
 
 &flexcan2 {
-	status = "disabled";
+	status = "okay";
 	pinctrl-0 = <&pinmux_flexcan2>;
 	pinctrl-names = "default";
-	bus-speed = <125000>;
+	bus-speed = <1000000>;
+	bus-speed-data = <4000000>;
 	can-transceiver {
 		max-bitrate = <5000000>;
 	};
 };
 
 &flexcan3 {
-	status = "disabled";
+	status = "okay";
 	pinctrl-0 = <&pinmux_flexcan3>;
 	pinctrl-names = "default";
-	bus-speed = <125000>;
+	bus-speed = <1000000>;
+	bus-speed-data = <4000000>;
 	can-transceiver {
 		max-bitrate = <5000000>;
 	};
