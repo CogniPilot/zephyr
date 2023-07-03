@@ -242,7 +242,7 @@ int ieee802154_radio_send(struct net_if *iface, struct net_pkt *pkt, struct net_
 	return -EIO;
 }
 
-static inline void swap_and_set_pkt_ll_addr(struct net_linkaddr *addr, bool comp,
+static inline void swap_and_set_pkt_ll_addr(struct net_linkaddr *addr, bool has_pan_id,
 					    enum ieee802154_addressing_mode mode,
 					    struct ieee802154_address_field *ll)
 {
@@ -251,22 +251,13 @@ static inline void swap_and_set_pkt_ll_addr(struct net_linkaddr *addr, bool comp
 	switch (mode) {
 	case IEEE802154_ADDR_MODE_EXTENDED:
 		addr->len = IEEE802154_EXT_ADDR_LENGTH;
-
-		if (comp) {
-			addr->addr = ll->comp.addr.ext_addr;
-		} else {
-			addr->addr = ll->plain.addr.ext_addr;
-		}
+		addr->addr = has_pan_id ? ll->plain.addr.ext_addr : ll->comp.addr.ext_addr;
 		break;
 
 	case IEEE802154_ADDR_MODE_SHORT:
 		addr->len = IEEE802154_SHORT_ADDR_LENGTH;
-
-		if (comp) {
-			addr->addr = (uint8_t *)&ll->comp.addr.short_addr;
-		} else {
-			addr->addr = (uint8_t *)&ll->plain.addr.short_addr;
-		}
+		addr->addr = (uint8_t *)(has_pan_id ? &ll->plain.addr.short_addr
+						    : &ll->comp.addr.short_addr);
 		break;
 
 	case IEEE802154_ADDR_MODE_NONE:
@@ -368,7 +359,7 @@ static enum net_verdict ieee802154_recv(struct net_if *iface, struct net_pkt *pk
 	struct ieee802154_fcf_seq *fs;
 	struct ieee802154_mpdu mpdu;
 	bool is_broadcast;
-	size_t hdr_len;
+	size_t ll_hdr_len;
 
 	/* The IEEE 802.15.4 stack assumes that drivers provide a single-fragment package. */
 	__ASSERT_NO_MSG(pkt->buffer && pkt->buffer->frags == NULL);
@@ -442,18 +433,18 @@ static enum net_verdict ieee802154_recv(struct net_if *iface, struct net_pkt *pk
 	 * packet handling as it will mangle the package header to comply with upper
 	 * network layers' (POSIX) requirement to represent network addresses in big endian.
 	 */
-	swap_and_set_pkt_ll_addr(net_pkt_lladdr_src(pkt), fs->fc.pan_id_comp, fs->fc.src_addr_mode,
-				 mpdu.mhr.src_addr);
+	swap_and_set_pkt_ll_addr(net_pkt_lladdr_src(pkt), !fs->fc.pan_id_comp,
+				 fs->fc.src_addr_mode, mpdu.mhr.src_addr);
 
-	swap_and_set_pkt_ll_addr(net_pkt_lladdr_dst(pkt), false, fs->fc.dst_addr_mode,
+	swap_and_set_pkt_ll_addr(net_pkt_lladdr_dst(pkt), true, fs->fc.dst_addr_mode,
 				 mpdu.mhr.dst_addr);
 
 	net_pkt_set_ll_proto_type(pkt, ETH_P_IEEE802154);
 
 	pkt_hexdump(RX_PKT_TITLE " (with ll)", pkt, true);
 
-	hdr_len = (uint8_t *)mpdu.payload - net_pkt_data(pkt);
-	net_buf_pull(pkt->buffer, hdr_len);
+	ll_hdr_len = (uint8_t *)mpdu.payload - net_pkt_data(pkt);
+	net_buf_pull(pkt->buffer, ll_hdr_len);
 
 #ifdef CONFIG_NET_6LO
 	verdict = ieee802154_6lo_decode_pkt(iface, pkt);
@@ -477,11 +468,11 @@ static int ieee802154_send(struct net_if *iface, struct net_pkt *pkt)
 	struct ieee802154_context *ctx = net_if_l2_data(iface);
 	uint8_t ll_hdr_len = 0, authtag_len = 0;
 	static struct net_buf *frame_buf;
-	static struct net_buf *buf;
+	static struct net_buf *pkt_buf;
 	bool send_raw = false;
 	int len;
 #ifdef CONFIG_NET_L2_IEEE802154_FRAGMENT
-	struct ieee802154_6lo_fragment_ctx f_ctx;
+	struct ieee802154_6lo_fragment_ctx frag_ctx;
 	int requires_fragmentation = 0;
 #endif
 
@@ -524,7 +515,7 @@ static int ieee802154_send(struct net_if *iface, struct net_pkt *pkt)
 #ifdef CONFIG_NET_6LO
 #ifdef CONFIG_NET_L2_IEEE802154_FRAGMENT
 		requires_fragmentation =
-			ieee802154_6lo_encode_pkt(iface, pkt, &f_ctx, ll_hdr_len, authtag_len);
+			ieee802154_6lo_encode_pkt(iface, pkt, &frag_ctx, ll_hdr_len, authtag_len);
 		if (requires_fragmentation < 0) {
 			return requires_fragmentation;
 		}
@@ -537,8 +528,8 @@ static int ieee802154_send(struct net_if *iface, struct net_pkt *pkt)
 	net_capture_pkt(iface, pkt);
 
 	len = 0;
-	buf = pkt->buffer;
-	while (buf) {
+	pkt_buf = pkt->buffer;
+	while (pkt_buf) {
 		int ret;
 
 		/* Reinitializing frame_buf */
@@ -547,18 +538,18 @@ static int ieee802154_send(struct net_if *iface, struct net_pkt *pkt)
 
 #ifdef CONFIG_NET_L2_IEEE802154_FRAGMENT
 		if (requires_fragmentation) {
-			buf = ieee802154_6lo_fragment(&f_ctx, frame_buf, true);
+			pkt_buf = ieee802154_6lo_fragment(&frag_ctx, frame_buf, true);
 		} else {
-			net_buf_add_mem(frame_buf, buf->data, buf->len);
-			buf = buf->frags;
+			net_buf_add_mem(frame_buf, pkt_buf->data, pkt_buf->len);
+			pkt_buf = pkt_buf->frags;
 		}
 #else
-		if (ll_hdr_len + buf->len + authtag_len > IEEE802154_MTU) {
-			NET_ERR("Frame too long: %d", buf->len);
+		if (ll_hdr_len + pkt_buf->len + authtag_len > IEEE802154_MTU) {
+			NET_ERR("Frame too long: %d", pkt_buf->len);
 			return -EINVAL;
 		}
-		net_buf_add_mem(frame_buf, buf->data, buf->len);
-		buf = buf->frags;
+		net_buf_add_mem(frame_buf, pkt_buf->data, pkt_buf->len);
+		pkt_buf = pkt_buf->frags;
 #endif /* CONFIG_NET_L2_IEEE802154_FRAGMENT */
 
 		__ASSERT_NO_MSG(authtag_len <= net_buf_tailroom(frame_buf));
