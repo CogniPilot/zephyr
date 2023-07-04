@@ -215,7 +215,7 @@
 
 	pinmux_lpspi1: pinmux_lpspi1 {
 		group0 {
-			pinmux = <&iomuxc_gpio_emc_b2_01_lpspi1_pcs0>,
+			pinmux = <&iomuxc_gpio_emc_b2_01_gpio_mux2_io11>,
 				<&iomuxc_gpio_emc_b2_00_lpspi1_sck>,
 				<&iomuxc_gpio_emc_b2_03_lpspi1_sdi>,
 				<&iomuxc_gpio_emc_b2_02_lpspi1_sdo>;
