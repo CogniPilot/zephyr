@@ -253,8 +253,12 @@
 
 	bmp388: bmp388@76 {
 		compatible = "bosch,bmp388";
+		int-gpios = <&gpio2 3 GPIO_ACTIVE_HIGH>;
 		reg = <0x76>;
 		status = "okay";
+		odr = "50";
+		osr-press = <4>;
+		osr-temp = <2>;
 	};
 };
 
@@ -339,7 +343,7 @@
  * be gated.
  */
 &gpt_hw_timer {
-	status = "okay";
+	status = "disabled";
 };
 
 &systick {
