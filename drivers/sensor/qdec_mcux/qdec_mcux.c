@@ -5,6 +5,10 @@
 
 #define DT_DRV_COMPAT nxp_mcux_qdec
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #include <errno.h>
 #include <stdint.h>
 
@@ -109,10 +113,11 @@ static int qdec_mcux_ch_get(const struct device *dev, enum sensor_channel ch,
 {
 	struct qdec_mcux_data *data = dev->data;
 
+	double rotation = (data->position * 2.0 * M_PI) / data->counts_per_revolution;
+
 	switch (ch) {
 	case SENSOR_CHAN_ROTATION:
-		sensor_value_from_float(val, (data->position * 360.0f)
-					/ data->counts_per_revolution);
+		sensor_value_from_double(val, rotation);
 		break;
 	default:
 		return -ENOTSUP;
