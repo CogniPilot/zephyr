@@ -15,6 +15,7 @@
 #include <fsl_enc.h>
 #include <fsl_xbara.h>
 
+#include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/sensor/qdec_mcux.h>
@@ -25,7 +26,14 @@ LOG_MODULE_REGISTER(qdec_mcux, CONFIG_SENSOR_LOG_LEVEL);
 
 struct qdec_mcux_config {
 	ENC_Type *base;
+	const struct device *clock_dev;
+	clock_control_subsys_t clock_subsys;
 	const struct pinctrl_dev_config *pincfg;
+	uint16_t filterCount;
+	uint16_t filterSamplePeriod;
+	int32_t single_phase_mode;
+	enc_prescaler_t ipbus_prescaler;
+	int32_t speed_measurement;
 	XBARA_Type *xbar;
 	size_t xbar_maps_len;
 	int xbar_maps[];
@@ -34,10 +42,11 @@ struct qdec_mcux_config {
 struct qdec_mcux_data {
 	enc_config_t qdec_config;
 	int32_t position;
-	int32_t speed;
+	double speed;
 	uint16_t last_time_duration;
 	int8_t last_speed_sign;
 	uint16_t counts_per_revolution;
+	float clock_period;
 };
 
 static enc_decoder_work_mode_t int_to_work_mode(int32_t val)
@@ -95,7 +104,7 @@ static int qdec_mcux_attr_get(const struct device *dev, enum sensor_channel ch,
 }
 
 
-#define QDC_TIMER_FREQUENCY 240000000.0f //TODO dynamics in DTS
+#define QDC_TIMER_FREQUENCY 198000000.0f //TODO dynamics in DTS
 #define PRESCALER 2048 //TODO dynamic in DTS
 
 static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
@@ -112,22 +121,17 @@ static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
 
 #if (defined(FSL_FEATURE_ENC_HAS_POSDPER) && FSL_FEATURE_ENC_HAS_POSDPER)
 
-	/* Read POSDH, POSDPERH and LASTEDGEH */
+	/* Read POSDH, POSDPERH  */
 	uint16_t dummy = ENC_GetPositionDifferenceValue(config->base);
 	int16_t POSDH = ENC_GetHoldPositionDifferenceValue(config->base);
 	uint16_t POSDPERH = ENC_GetHoldPositionDifferencePeriodValue(config->base);
-	uint16_t LASTEDGEH = ENC_GetHoldLastEdgeTimeValue(config->base);
 	uint16_t period;
 	int8_t speed_sign;
-	float speed;
-	int64_t i64Numerator;
-	float speedCalConst = 123;
 
 	/* POSDH == 0? */
 	if(POSDH != 0)
 	{
 		/* Shaft is moving during speed measurement interval */
-		POSDH = POSDH;
 		period = POSDPERH;
 		data->last_time_duration = period;
 
@@ -142,30 +146,24 @@ static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
 
 		if(speed_sign == data->last_speed_sign)
 		{
-			/* Calculate speed */
-			speed = POSDH / (POSDPERH * (1.0f / (QDC_TIMER_FREQUENCY / 2048))) /
-			        data->counts_per_revolution * 60;
+			/* Calculate speed in rad/s */
+			data->speed = (POSDH / (POSDPERH * data->clock_period) * 2.0 * M_PI)
+				/ data->counts_per_revolution;
 		}
 		else
 		{
-			speed = 0;
+			data->speed = 0;
 		}
 		data->last_speed_sign = speed_sign;
 	}
 	else
 	{
-		speed = 0;
+		data->speed = 0;
 	}
-
-	/*
-	this->sSpeed.f16SpeedFilt = GDFLIB_FilterIIR1_F16(MLIB_Conv_F16l(speed), &this->sSpeed.sQDCSpeedFilter);
-	this->sSpeed.fltSpeed = MLIB_ConvSc_FLTsf(this->sSpeed.f16SpeedFilt, this->sSpeed.fltSpeedFrac16ToAngularCoeff);*/
-
-
 #endif
 
-	//LOG_DBG("pos %d", data->position);
-	LOG_DBG("pos %d RPM %f diff %d period @240Mhz/2048 %d cpr %d", data->position, speed, POSDH, POSDPERH, data->counts_per_revolution);
+	LOG_DBG("pos %d", data->position);
+	//LOG_DBG("pos %d RPM %f diff %d period @240Mhz/2048 %d cpr %d", data->position, speed, POSDH, POSDPERH, data->counts_per_revolution);
 
 	return 0;
 }
@@ -173,6 +171,7 @@ static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
 static int qdec_mcux_ch_get(const struct device *dev, enum sensor_channel ch,
 			 struct sensor_value *val)
 {
+	const struct qdec_mcux_config *config = dev->config;
 	struct qdec_mcux_data *data = dev->data;
 
 	double rotation = (data->position * 2.0 * M_PI) / data->counts_per_revolution;
@@ -181,6 +180,15 @@ static int qdec_mcux_ch_get(const struct device *dev, enum sensor_channel ch,
 	case SENSOR_CHAN_ROTATION:
 		sensor_value_from_double(val, rotation);
 		break;
+#if (defined(FSL_FEATURE_ENC_HAS_POSDPER) && FSL_FEATURE_ENC_HAS_POSDPER)
+	case SENSOR_CHAN_RPM:
+		if(config->speed_measurement) {
+			sensor_value_from_double(val, data->speed);
+		} else {
+			return -ENOTSUP;
+		}
+		break;
+#endif
 	default:
 		return -ENOTSUP;
 	}
@@ -195,10 +203,14 @@ static const struct sensor_driver_api qdec_mcux_api = {
 	.channel_get = &qdec_mcux_ch_get,
 };
 
-static void init_inputs(const struct device *dev)
+
+static int qdec_mcux_init(const struct device *dev)
 {
 	int i;
 	const struct qdec_mcux_config *config = dev->config;
+	struct qdec_mcux_data *data = dev->data;
+
+	LOG_DBG("Initializing %s", dev->name);
 
 	i = pinctrl_apply_state(config->pincfg, PINCTRL_STATE_DEFAULT);
 	assert(i == 0);
@@ -209,6 +221,32 @@ static void init_inputs(const struct device *dev)
 		XBARA_SetSignalsConnection(config->xbar, config->xbar_maps[i],
 					   config->xbar_maps[i + 1]);
 	}
+
+#if (defined(FSL_FEATURE_ENC_HAS_POSDPER) && FSL_FEATURE_ENC_HAS_POSDPER)
+	if(config->speed_measurement) {
+		uint32_t clock_freq;
+		if (clock_control_get_rate(config->clock_dev, config->clock_subsys,
+					&clock_freq)) {
+			return -EINVAL;
+		}
+		data->clock_period = 1.0f / ((float)clock_freq / (2 << (config->ipbus_prescaler - 1)));
+	}
+#endif
+
+	ENC_GetDefaultConfig(&data->qdec_config);
+	data->qdec_config.decoderWorkMode = int_to_work_mode(config->single_phase_mode);
+	data->qdec_config.filterCount = config->filterCount;
+	data->qdec_config.filterSamplePeriod = config->filterSamplePeriod;
+	data->qdec_config.prescalerValue = config->ipbus_prescaler;
+	LOG_DBG("Latency is %u filter clock cycles + 2 IPBus clock "
+		"periods", data->qdec_config.filterSamplePeriod *
+		(data->qdec_config.filterCount + 3));
+	ENC_Init(config->base, &data->qdec_config);
+
+	/* Update the position counter with initial value. */
+	ENC_DoSoftwareLoadInitialPositionValue(config->base);
+
+	return 0;
 }
 
 #define XBAR_PHANDLE(n)	DT_INST_PHANDLE(n, xbar)
@@ -217,9 +255,6 @@ static void init_inputs(const struct device *dev)
 	COND_CODE_1(DT_INST_NODE_HAS_PROP(n, p), (				\
 		    BUILD_ASSERT(IN_RANGE(DT_INST_PROP(n, p), min, max),	\
 				 STRINGIFY(p) " value is out of range")), ())
-
-#define QDEC_SET_COND(n, v, p)							\
-	COND_CODE_1(DT_INST_NODE_HAS_PROP(n, p), (v = DT_INST_PROP(n, p)), ())
 
 #define QDEC_MCUX_INIT(n)							\
 										\
@@ -236,40 +271,21 @@ static void init_inputs(const struct device *dev)
 										\
 	static const struct qdec_mcux_config qdec_mcux_##n##_config = {		\
 		.base = (ENC_Type *)DT_INST_REG_ADDR(n),			\
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),		\
+		.clock_subsys =						\
+			(clock_control_subsys_t)DT_INST_CLOCKS_CELL(n, name),\
 		.xbar = (XBARA_Type *)DT_REG_ADDR(XBAR_PHANDLE(n)),		\
 		.xbar_maps_len = DT_PROP_LEN(XBAR_PHANDLE(n), xbar_maps),	\
 		.xbar_maps = DT_PROP(XBAR_PHANDLE(n), xbar_maps),		\
 		.pincfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),			\
+		.filterCount = DT_INST_PROP_OR(n ,filterCount, 0),		\
+		.filterSamplePeriod = DT_INST_PROP_OR(n, filterSamplePeriod, 0),\
+		.single_phase_mode = DT_INST_PROP(n, single_phase_mode),	\
+		.speed_measurement = DT_INST_PROP(n, speed_measurement),	\
+		.ipbus_prescaler = DT_INST_ENUM_IDX(n, ipbus_prescaler),	\
 	};									\
 										\
-	static int qdec_mcux_##n##_init(const struct device *dev)		\
-	{									\
-		const struct qdec_mcux_config *config = dev->config;		\
-		struct qdec_mcux_data *data = dev->data;			\
-										\
-		LOG_DBG("Initializing %s", dev->name);				\
-										\
-		init_inputs(dev);						\
-										\
-		ENC_GetDefaultConfig(&data->qdec_config);			\
-		data->qdec_config.decoderWorkMode = int_to_work_mode(		\
-			DT_INST_PROP(n, single_phase_mode));			\
-		QDEC_SET_COND(n, data->qdec_config.filterCount, filter_count);	\
-		QDEC_SET_COND(n, data->qdec_config.filterSamplePeriod,		\
-			  filter_sample_period);				\
-		LOG_DBG("Latency is %u filter clock cycles + 2 IPBus clock "	\
-			"periods", data->qdec_config.filterSamplePeriod *	\
-			(data->qdec_config.filterCount + 3));			\
-		ENC_Init(config->base, &data->qdec_config);			\
-										\
-		/* Update the position counter with initial value. */		\
-		ENC_DoSoftwareLoadInitialPositionValue(config->base);		\
-										\
-		return 0;							\
-	}									\
-										\
-										\
-	SENSOR_DEVICE_DT_INST_DEFINE(n, qdec_mcux_##n##_init, NULL,		\
+	SENSOR_DEVICE_DT_INST_DEFINE(n, qdec_mcux_init, NULL,			\
 			      &qdec_mcux_##n##_data, &qdec_mcux_##n##_config,	\
 			      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,		\
 			      &qdec_mcux_api);					\

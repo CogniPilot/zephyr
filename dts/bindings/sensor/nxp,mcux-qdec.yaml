@@ -5,7 +5,7 @@ description: NXP MCUX QDEC
 
 compatible: "nxp,mcux-qdec"
 
-include: [pinctrl-device.yaml, sensor-device.yaml]
+include: [base.yaml, pinctrl-device.yaml, sensor-device.yaml]
 
 properties:
   reg:
@@ -46,6 +46,36 @@ properties:
       difference counters to operate with count rates up to the IPBus
       frequency. Turning on the input filter introduces a latency of:
       ((FILT_CNT + 3) * FILT_PER) FILT clock cycles + 2 IPBus clock periods.
+
+  speed-measurement:
+    type: boolean
+    description: |
+      Quadrature decoder hardware timer calculates the speed.
+
+  ipbus-prescaler:
+    type: string
+    required: true
+    description: |
+      When speed-measurement is enablement the period time is clocked by the IPBus
+      if the input is too slow tTODODFSDF
+    enum:
+      - "kENC_ClockDiv1"
+      - "kENC_ClockDiv2"
+      - "kENC_ClockDiv4"
+      - "kENC_ClockDiv8"
+      - "kENC_ClockDiv16"
+      - "kENC_ClockDiv32"
+      - "kENC_ClockDiv64"
+      - "kENC_ClockDiv128"
+      - "kENC_ClockDiv256"
+      - "kENC_ClockDiv512"
+      - "kENC_ClockDiv1024"
+      - "kENC_ClockDiv2048"
+      - "kENC_ClockDiv4096"
+      - "kENC_ClockDiv8192"
+      - "kENC_ClockDiv16384"
+      - "kENC_ClockDiv32768"
+
 
   xbar:
     type: phandle

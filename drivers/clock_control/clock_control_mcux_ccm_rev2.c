@@ -62,6 +62,10 @@ static int mcux_ccm_get_subsys_rate(const struct device *dev,
 		break;
 #endif
 
+	case IMX_CCM_EDMA_CLK:
+		clock_root = kCLOCK_Root_Bus;
+		break;
+
 #ifdef CONFIG_DMA_MCUX_EDMA
 	case IMX_CCM_EDMA_CLK:
 		clock_root = kCLOCK_Root_Bus;
