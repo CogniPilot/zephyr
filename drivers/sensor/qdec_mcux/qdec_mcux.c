@@ -34,6 +34,9 @@ struct qdec_mcux_config {
 struct qdec_mcux_data {
 	enc_config_t qdec_config;
 	int32_t position;
+	int32_t speed;
+	uint16_t last_time_duration;
+	int8_t last_speed_sign;
 	uint16_t counts_per_revolution;
 };
 
@@ -91,6 +94,10 @@ static int qdec_mcux_attr_get(const struct device *dev, enum sensor_channel ch,
 	}
 }
 
+
+#define QDC_TIMER_FREQUENCY 240000000.0f //TODO dynamics in DTS
+#define PRESCALER 2048 //TODO dynamic in DTS
+
 static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
 {
 	const struct qdec_mcux_config *config = dev->config;
@@ -103,7 +110,62 @@ static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
 	/* Read position */
 	data->position = ENC_GetPositionValue(config->base);
 
-	LOG_DBG("pos %d", data->position);
+#if (defined(FSL_FEATURE_ENC_HAS_POSDPER) && FSL_FEATURE_ENC_HAS_POSDPER)
+
+	/* Read POSDH, POSDPERH and LASTEDGEH */
+	uint16_t dummy = ENC_GetPositionDifferenceValue(config->base);
+	int16_t POSDH = ENC_GetHoldPositionDifferenceValue(config->base);
+	uint16_t POSDPERH = ENC_GetHoldPositionDifferencePeriodValue(config->base);
+	uint16_t LASTEDGEH = ENC_GetHoldLastEdgeTimeValue(config->base);
+	uint16_t period;
+	int8_t speed_sign;
+	float speed;
+	int64_t i64Numerator;
+	float speedCalConst = 123;
+
+	/* POSDH == 0? */
+	if(POSDH != 0)
+	{
+		/* Shaft is moving during speed measurement interval */
+		POSDH = POSDH;
+		period = POSDPERH;
+		data->last_time_duration = period;
+
+		if(POSDH > 0)
+		{
+			speed_sign = 1;
+		}
+		else
+		{
+			speed_sign = -1;
+		}
+
+		if(speed_sign == data->last_speed_sign)
+		{
+			/* Calculate speed */
+			speed = POSDH / (POSDPERH * (1.0f / (QDC_TIMER_FREQUENCY / 2048))) /
+			        data->counts_per_revolution * 60;
+		}
+		else
+		{
+			speed = 0;
+		}
+		data->last_speed_sign = speed_sign;
+	}
+	else
+	{
+		speed = 0;
+	}
+
+	/*
+	this->sSpeed.f16SpeedFilt = GDFLIB_FilterIIR1_F16(MLIB_Conv_F16l(speed), &this->sSpeed.sQDCSpeedFilter);
+	this->sSpeed.fltSpeed = MLIB_ConvSc_FLTsf(this->sSpeed.f16SpeedFilt, this->sSpeed.fltSpeedFrac16ToAngularCoeff);*/
+
+
+#endif
+
+	//LOG_DBG("pos %d", data->position);
+	LOG_DBG("pos %d RPM %f diff %d period @240Mhz/2048 %d cpr %d", data->position, speed, POSDH, POSDPERH, data->counts_per_revolution);
 
 	return 0;
 }
