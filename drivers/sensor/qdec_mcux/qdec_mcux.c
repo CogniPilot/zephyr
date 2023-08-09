@@ -43,10 +43,9 @@ struct qdec_mcux_data {
 	enc_config_t qdec_config;
 	int32_t position;
 	double speed;
-	uint16_t last_time_duration;
 	int8_t last_speed_sign;
 	uint16_t counts_per_revolution;
-	float clock_period;
+	double clock_period;
 };
 
 static enc_decoder_work_mode_t int_to_work_mode(int32_t val)
@@ -125,15 +124,15 @@ static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
 	uint16_t dummy = ENC_GetPositionDifferenceValue(config->base);
 	int16_t POSDH = ENC_GetHoldPositionDifferenceValue(config->base);
 	uint16_t POSDPERH = ENC_GetHoldPositionDifferencePeriodValue(config->base);
-	uint16_t period;
 	int8_t speed_sign;
 
-	/* POSDH == 0? */
+	/* Shaft has moved during speed measurement interval */
 	if(POSDH != 0)
 	{
-		/* Shaft is moving during speed measurement interval */
-		period = POSDPERH;
-		data->last_time_duration = period;
+		if(POSDPERH == UINT16_MAX) {
+			LOG_WRN("%s, POSDPERH equals UINT16_MAX can't caculate speed. Please increase the prescaler to avoid POSDPERH overflows", dev->name);
+			return -EOVERFLOW;
+		}
 
 		if(POSDH > 0)
 		{
@@ -162,8 +161,8 @@ static int qdec_mcux_fetch(const struct device *dev, enum sensor_channel ch)
 	}
 #endif
 
-	LOG_DBG("pos %d", data->position);
-	//LOG_DBG("pos %d RPM %f diff %d period @240Mhz/2048 %d cpr %d", data->position, speed, POSDH, POSDPERH, data->counts_per_revolution);
+	//LOG_DBG("pos %d", data->position);
+	LOG_DBG("pos %d RPM %f diff %d period %d cpr %d", data->position, data->speed, POSDH, POSDPERH, data->counts_per_revolution);
 
 	return 0;
 }
@@ -229,7 +228,7 @@ static int qdec_mcux_init(const struct device *dev)
 					&clock_freq)) {
 			return -EINVAL;
 		}
-		data->clock_period = 1.0f / ((float)clock_freq / (2 << (config->ipbus_prescaler - 1)));
+		data->clock_period = 1.0f / ((double)clock_freq / (2 << (config->ipbus_prescaler - 1)));
 	}
 #endif
 
