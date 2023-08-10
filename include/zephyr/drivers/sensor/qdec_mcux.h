@@ -14,6 +14,8 @@ enum sensor_attribute_qdec_mcux {
 	SENSOR_ATTR_QDEC_MOD_VAL = SENSOR_ATTR_PRIV_START,
 	/* Single phase counting */
 	SENSOR_ATTR_QDEC_ENABLE_SINGLE_PHASE,
+	/* Prescaler */
+	SENSOR_ATTR_QDEC_IPBUS_PRESCALER,
 };
 
 #endif /* ZEPHYR_INCLUDE_DRIVERS_SENSOR_QDEC_MCUX_H_ */
