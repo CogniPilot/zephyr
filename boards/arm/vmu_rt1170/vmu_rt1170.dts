@@ -19,6 +19,7 @@
 		led1 = &red_led;
 		watchdog0 = &wdog1;
 		sdhc0 = &usdhc1;
+		sw0 = &arming_button;
 	};
 
 	chosen {
@@ -32,6 +33,14 @@
 		zephyr,flash-controller = &mx25um51345g;
 		zephyr,flash = &mx25um51345g;
 		zephyr,code-partition = &slot0_partition;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		arming_button: button_0 {
+			label = "Arming Switch";
+			gpios = <&gpio1 24 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+		};
 	};
 
 	/* This regulator controls VDD_3V3_SD_CARD onboard supply */
