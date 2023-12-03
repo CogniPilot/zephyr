@@ -1,0 +1,6 @@
+# Copyright (c) 2023 CogniPilot Foundation
+# Copyright (c) 2023 NXP
+# SPDX-License-Identifier: Apache-2.0
+
+config SHIELD_MR_CANHUBK3_ADAP
+	def_bool $(shields_list_contains,mr_canhubk3_adap)
