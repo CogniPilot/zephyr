@@ -23,6 +23,8 @@ manifest:
       url-base: https://github.com/zephyrproject-rtos
     - name: babblesim
       url-base: https://github.com/BabbleSim
+    - name: cognipilot
+      url-base: https://github.com/CogniPilot
 
   group-filter: [-babblesim, -optional]
 
@@ -193,7 +195,8 @@ manifest:
       groups:
         - hal
     - name: hal_nxp
-      revision: 2796169ee23dc838311b65758806eb94546a7bc2
+      remote: cognipilot
+      revision: 56ad7bed3099da5992bc2ec746647615a8e8f5c9
       path: modules/hal/nxp
       groups:
         - hal
