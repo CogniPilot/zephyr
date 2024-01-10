@@ -1,0 +1,5 @@
+board:
+  name: tropic
+  vendor: nxp
+  socs:
+    - name: mimxrt1062

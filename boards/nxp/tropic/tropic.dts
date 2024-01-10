@@ -1,0 +1,471 @@
+/*
+ * Copyright (c) 2020, Bernhard Kraemer
+ * Copyright (c) 2024, Peter van der Perk
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include <nxp/nxp_rt1060.dtsi>
+#include <zephyr/dt-bindings/led/led.h>
+#include "tropic-pinctrl.dtsi"
+#include <freq.h>
+#include <mem.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	model = "Tropic VMU";
+	compatible = "nxp,mimxrt1062";
+
+	aliases {
+		led0 = &led1_red;
+		led1 = &led1_green;
+		led2 = &led1_blue;
+		pwm-led0 = &led1_red_pwm;
+		pwm-led1 = &led1_green_pwm;
+		pwm-led2 = &led1_blue_pwm;
+		red-pwm-led = &led1_red_pwm;
+		green-pwm-led = &led1_green_pwm;
+		blue-pwm-led = &led1_blue_pwm;
+		sw0 = &arming_button;
+		buzzer = &buzzer;
+	};
+
+	chosen {
+		zephyr,flash-controller = &w25q64jvxgim;
+		zephyr,flash = &w25q64jvxgim;
+		zephyr,sram = &ocram;
+		zephyr,itcm = &itcm;
+		zephyr,dtcm = &dtcm;
+		zephyr,console = &lpuart5; /* Teensy Pins 35, 34 */
+		zephyr,shell-uart = &lpuart5;
+		zephyr,canbus = &flexcan3;
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		arming_button: button_0 {
+			label = "Arming Switch";
+			gpios = <&gpio2 12 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+    leds {
+        compatible = "gpio-leds";
+		
+        led1_red: led1_red {
+            gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+		};
+
+        led1_green: led1_green {
+            gpios = <&gpio2 19 GPIO_ACTIVE_HIGH>;
+		};
+
+        led1_blue: led1_blue {
+            gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+    pwm {
+        compatible = "pwm-leds";
+		
+		led1_red_pwm: led1_red_pwm {
+			label = "User LED RGB Red Led";
+            pwms = <&qtmr4 0 PWM_MSEC(20) PWM_POLARITY_INVERTED>;
+		};
+		
+		led1_green_pwm: led1_green_pwm {
+			label = "User LED RGB Green Led";
+            pwms = <&flexpwm2_pwm3 1 PWM_MSEC(20) PWM_POLARITY_INVERTED>;
+		};
+		
+		led1_blue_pwm: led1_blue_pwm {
+			label = "User LED RGB Blue Led";
+            pwms = <&qtmr4 1 PWM_MSEC(20) PWM_POLARITY_INVERTED>;
+		};
+
+        buzzer: buzzer {
+            label = "BUZZER";
+            pwms = <&flexpwm3_pwm1 0 PWM_KHZ(1) PWM_POLARITY_NORMAL>;
+        };
+    };
+};
+
+&adc1 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_adc1>;
+	pinctrl-names = "default";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	adc_a: channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,resolution = <12>;
+	};
+
+	adc_v: channel@13 {
+		reg = <13>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,resolution = <12>;
+	};
+};
+
+&flexspi {
+	status = "okay";
+
+	reg = <0x402a8000 0x4000>, <0x60000000 DT_SIZE_M(8)>;
+	/* WINBOND flash memory*/
+	w25q64jvxgim: w25q64jvxgim@0 {
+		compatible = "nxp,imx-flexspi-nor";
+		size = <DT_SIZE_M(8 * 8)>;
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(133)>;
+		status = "okay";
+		jedec-id = [ef 70 17];
+
+		erase-block-size = <4096>;
+		write-block-size = <1>;
+	};
+};
+
+zephyr_udc0: &usb1 {
+	status = "okay";
+};
+
+&edma0 {
+	status = "okay";
+};
+
+/* Pinmux settings */
+&enet_mac {
+	pinctrl-0 = <&pinmux_enet>;
+	pinctrl-names = "default";
+	zephyr,random-mac-address;
+	phy-connection-type = "rmii";
+	phy-handle = <&phy>;
+};
+
+&enet_mdio {
+	status = "okay";
+	pinctrl-0 = <&pinmux_enet>;
+	pinctrl-names = "default";
+	phy: phy@0 {
+		compatible = "ethernet-phy";
+		reg = <0>;
+		status = "okay";
+	};
+};
+
+&flexcan3 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_flexcan3>;
+	pinctrl-names = "default";
+};
+
+&lpi2c1 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_lpi2c1>;
+	pinctrl-names = "default";
+
+	ist8310: ist8310@e {
+		compatible = "isentek,ist8310";
+		reg = <0xe>;
+	};
+	
+	ncp5623c: ncp5623c@39 {
+		compatible = "onnn,ncp5623c";
+		reg = <0x39>;
+
+		led_0 {
+			label = "GNSS LED";
+			index = <0>;
+			color-mapping =
+				<LED_COLOR_ID_RED>,
+				<LED_COLOR_ID_GREEN>,
+				<LED_COLOR_ID_BLUE>;
+		};
+	};
+	
+};
+
+&lpi2c4 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_lpi2c4>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_FAST>;
+
+	bmm150: bmm150@12 {
+		compatible = "bosch,bmm150";
+		status = "okay";
+		reg = <0x12>;
+	};
+	
+	bmp388: bmp388@76 {
+		status = "okay";
+		compatible = "bosch,bmp388";
+		reg = <0x76>;
+	};
+};
+
+&lpspi3 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_lpspi3>;
+	pinctrl-names = "default";
+	cs-gpios =<&gpio1 28 GPIO_ACTIVE_LOW>;
+
+	icm42688: icm42688p@0 {
+		compatible = "invensense,icm42688";
+		reg = <0>;
+		int-gpios = <&gpio3 18 GPIO_ACTIVE_HIGH>;
+		spi-max-frequency = <24000000>;
+		accel-hz = <100>;
+		accel-fs = <16>;
+		gyro-hz = <100>;
+		gyro-fs = <2000>;
+	};
+};
+
+&lpspi4 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_lpspi4>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio2 0 GPIO_ACTIVE_LOW>,
+			   <&gpio2 18 GPIO_ACTIVE_LOW>;
+	
+	bmi08x_accel: bmi08x@0 {
+		compatible = "bosch,bmi08x-accel";
+		reg = <0>;
+		int-gpios = <&gpio1 25 GPIO_ACTIVE_HIGH>;
+		spi-max-frequency = <10000000>;
+		int1-map-io = <0x01>;
+		int2-map-io = <0x00>;
+		int1-conf-io = <0x04>;
+		int2-conf-io = <0x00>;
+		accel-hz = "800";
+		accel-fs = <24>;
+	};
+
+	bmi08x_gyro: bmi08x@1 {
+		compatible = "bosch,bmi08x-gyro";
+		reg = <1>;
+		int-gpios = <&gpio2 10 GPIO_ACTIVE_HIGH>;
+		spi-max-frequency = <10000000>;
+		int3-4-map-io = <0x01>;
+		int3-4-conf-io = <0x02>;
+		gyro-hz = "1000_116";
+		gyro-fs = <1000>;
+	};
+};
+
+
+&lpuart2 {
+	pinctrl-0 = <&pinmux_lpuart2>;
+	pinctrl-1 = <&pinmux_lpuart2_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&lpuart3 {
+	pinctrl-0 = <&pinmux_lpuart3>;
+	pinctrl-1 = <&pinmux_lpuart3_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&lpuart4 {
+	pinctrl-0 = <&pinmux_lpuart4>;
+	pinctrl-1 = <&pinmux_lpuart4_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&lpuart5 {
+	status = "okay";
+	current-speed = < 115200 >;
+	pinctrl-0 = <&pinmux_lpuart5>;
+	pinctrl-1 = <&pinmux_lpuart5_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&lpuart8 {
+	status = "okay";
+	current-speed = <100000>;
+	pinctrl-0 = <&pinmux_lpuart8>;
+	pinctrl-1 = <&pinmux_lpuart8_sleep>;
+	pinctrl-names = "default", "sleep";
+	rx-invert;
+	single-wire;
+
+	sbus {
+		compatible = "futaba,sbus";
+  		chan_1 {
+            channel = <1>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <1>;
+        };
+        chan_2 {
+            channel = <2>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <2>;
+        };
+        chan_3 {
+            channel = <3>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <3>;
+        };
+        chan_4 {
+            channel = <4>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <4>;
+        };
+        chan_5 {
+            channel = <5>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <5>;
+        };
+        chan_6 {
+            channel = <6>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <6>;
+        };
+        chan_7 {
+            channel = <7>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <7>;
+        };
+        chan_8 {
+            channel = <8>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <8>;
+        };
+        chan_9 {
+            channel = <9>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <9>;
+        };
+        chan_10 {
+            channel = <10>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <10>;
+        };
+        chan_11 {
+            channel = <11>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <11>;
+        };
+        chan_12 {
+            channel = <12>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <12>;
+        };
+        chan_13 {
+            channel = <13>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <13>;
+        };
+        chan_14 {
+            channel = <14>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <14>;
+        };
+        chan_15 {
+            channel = <15>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <15>;
+        };
+        chan_16 {
+            channel = <16>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <16>;
+        };
+	};
+};
+
+&usdhc1 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_usdhc1>;
+	pinctrl-1 = <&pinmux_usdhc1_slow>;
+	pinctrl-2 = <&pinmux_usdhc1_med>;
+	pinctrl-3 = <&pinmux_usdhc1_fast>;
+	pinctrl-names = "default", "slow", "med", "fast";
+};
+
+&flexpwm2_pwm0 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_flexpwm2_pwm0_ch1_ch2>;
+	pinctrl-names = "default";
+	nxp,prescaler = <64>;
+};
+
+&flexpwm2_pwm1 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_flexpwm2_pwm1_ch3>;
+	pinctrl-names = "default";
+	nxp,prescaler = <64>;
+};
+
+&flexpwm2_pwm2 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_flexpwm2_pwm2_ch4>;
+	pinctrl-names = "default";
+	nxp,prescaler = <64>;
+};
+
+&flexpwm2_pwm3 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_flexpwm2_pwm3_led_g>;
+	pinctrl-names = "default";
+	nxp,prescaler = <64>;
+};
+
+&flexpwm4_pwm2 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_flexpwm4_pwm2_ch5_ch6>;
+	pinctrl-names = "default";
+	nxp,prescaler = <64>;
+};
+
+&flexpwm3_pwm1 {
+	status = "okay";
+	pinctrl-0 = <&pinmux_flexpwm3_pwm1_buzzer>;
+	pinctrl-names = "default";
+	nxp,prescaler = <64>;
+};
+
+&qtmr4 {
+	compatible = "nxp,qtmr-pwm";
+	pinctrl-0 = <&pinmux_qtmr4_rb_led>;
+	pinctrl-names = "default";
+	#pwm-cells = <3>;
+	prescaler = <128>;
+	status = "okay";
+};
+
+&systick {
+	status = "okay";
+};
+
+&usdhc1 {
+	status = "okay";
+	no-1-8-v;
+	pinctrl-0 = <&pinmux_usdhc1>;
+	pinctrl-1 = <&pinmux_usdhc1_slow>;
+	pinctrl-2 = <&pinmux_usdhc1_med>;
+	pinctrl-3 = <&pinmux_usdhc1_fast>;
+	pinctrl-names = "default", "slow", "med", "fast";
+	mmc {
+		compatible = "zephyr,sdmmc-disk";
+		status = "okay";
+	};
+};
+
+&xbar1 {
+	status = "okay";
+	xbar-maps = < (16|0x100) (36|0x100) >, /* kXBARA1_OutputIomuxXbarInout16 <-> QTIMER4_TMR0_OUTPUT */
+		    < (17|0x100) (37|0x100) >; /* kXBARA1_OutputIomuxXbarInout17 <-> QTIMER4_TMR1_OUTPUT */
+};

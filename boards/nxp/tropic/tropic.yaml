@@ -1,0 +1,27 @@
+#
+# Copyright (c) 2020, Bernhard Kraemer
+# Copyright (c) 2024, Peter van der Perk
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+identifier: tropic
+name: Tropic VMU
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+  - gnuarmemb
+  - xtools
+ram: 768
+flash: 8192
+supported:
+  - counter
+  - gpio
+  - sdhc
+  - usb_device
+testing:
+  ignore_tags:
+    - net
+    - posix
+vendor: nxp
