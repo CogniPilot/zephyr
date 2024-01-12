@@ -176,21 +176,28 @@
 };
 
 &flash0 {
-	partitions {
-		compatible = "fixed-partitions";
-		#address-cells = <1>;
-		#size-cells = <1>;
+    partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
 
-		ivt_header: partition@0 {
-			label = "ivt-header";
-			reg = <0x00000000 0x100>;
-		};
-
-		code_partition: partition@100 {
-			label = "code-partition";
-			reg = <0x00000100 (DT_SIZE_K(4048) - 0x100)>;
-		};
-	};
+        ivt_header: partition@0 {
+            label = "ivt-header";
+            reg = <0x00000000 0x100>;
+        };
+        boot_partition: partition@100 {
+            label = "mcuboot";
+            reg = <0x00000100 (DT_SIZE_K(128) - 0x100)>;
+        };
+        slot0_partition: partition@20000 {
+            label = "image-0";
+            reg = <0x20000 DT_SIZE_K(1984)>;
+        };
+        slot1_partition: partition@210000 {
+            label = "image-1";
+            reg = <0x210000 DT_SIZE_K(1984)>;
+        };
+    };
 };
 
 &gpioa_l {
