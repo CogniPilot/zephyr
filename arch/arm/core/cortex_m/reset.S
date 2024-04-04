@@ -67,6 +67,19 @@ SECTION_SUBSEC_FUNC(TEXT,_reset_section,z_arm_reset)
  * search for a __start symbol instead, so create that alias here.
  */
 SECTION_SUBSEC_FUNC(TEXT,_reset_section,__start)
+    cpsid i
+    mov   r0, #0
+    mov   r1, #0
+    mov   r2, #0
+    mov   r3, #0
+    mov   r4, #0
+    mov   r5, #0
+    mov   r6, #0
+    mov   r7, #0
+
+#if defined(CONFIG_PLATFORM_SPECIFIC_INIT)
+    bl z_arm_platform_init
+#endif
 
 #if defined(CONFIG_DEBUG_THREAD_INFO)
     /* Clear z_sys_post_kernel flag for RTOS aware debuggers */
@@ -92,10 +105,6 @@ SECTION_SUBSEC_FUNC(TEXT,_reset_section,__start)
 #if defined(CONFIG_PM_S2RAM)
     bl arch_pm_s2ram_resume
 #endif /* CONFIG_PM_S2RAM */
-
-#if defined(CONFIG_PLATFORM_SPECIFIC_INIT)
-    bl z_arm_platform_init
-#endif
 
 #if defined(CONFIG_INIT_ARCH_HW_AT_BOOT)
 #if defined(CONFIG_CPU_HAS_ARM_MPU)
