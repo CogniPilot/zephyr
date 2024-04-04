@@ -108,7 +108,7 @@
 		compatible = "nxp,qdec-s32";
 		pinctrl-0 = <&qdec_s32>;
 		pinctrl-names = "default";
-		micro-ticks-per-rev = <685440000>;
+		micro-ticks-per-rev = <1370880000>;
 		status = "okay";
 		trgmux = <&trgmux>;
 		trgmux-io-config =
@@ -218,17 +218,25 @@
 	};
 };
 
+&gpioa_l {
+	status = "okay";
+};
+
 &gpioa_h {
 	status = "okay";
 };
 
-&gpioe_l {
+&gpiob_l {
 	status = "okay";
 };
 
 /* Enable gpio to control the CAN transceivers and LEDs */
 
 &gpiob_h {
+	status = "okay";
+};
+
+&gpioc_l {
 	status = "okay";
 };
 
@@ -244,7 +252,7 @@
 	status = "okay";
 };
 
-&gpiob_l {
+&gpioe_l {
 	status = "okay";
 };
 
@@ -507,10 +515,10 @@
 		/* Default clock for internal counter for PWM channel 0-7 is 100Khz */
 		pwm_0 {
 			channel = <0>;
-			pwm-mode = "OPWFMB";
-			period = <65535>;
+			master-bus = <&emios0_bus_a>;
+			pwm-mode = "OPWMB";
 			duty-cycle = <0>;
-			prescaler = <8>;
+			phase-shift = <100>;
 			polarity = "ACTIVE_HIGH";
 		};
 
