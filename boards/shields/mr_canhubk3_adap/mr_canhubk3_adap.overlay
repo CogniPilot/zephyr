@@ -1,0 +1,151 @@
+/*
+ * Copyright (c) 2023 CogniPilot Foundation
+ * Copyright (c) 2023 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <freq.h>
+#include <zephyr/dt-bindings/gpio/nxp-s32-gpio.h>
+
+/ {
+	aliases {
+		accel0 = &icm42688_mr_canhubk3_adap;
+		gyro0 = &icm42688_mr_canhubk3_adap;
+		mag0 = &bmm150_mr_canhubk3_adap;
+		mag1 = &ist8310_mr_canhubk3_adap;
+		sw0 = &arming_button_mr_canhubk3_adap;
+		led0 = &gps_led_mr_canhubk3_adap;
+		buzzer = &gps_buzzer_mr_canhubk3_adap;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		arming_button_mr_canhubk3_adap: button_0 {
+			label = "Arming Switch";
+			gpios = <&gpioa_l 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+		};
+	};
+
+	leds {
+		gps_led_mr_canhubk3_adap: gps_led {
+			label = "GPS_LED";
+			gpios = <&gpioe_h 10 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	pwmbuzzers {
+		compatible = "pwm-leds";
+
+		gps_buzzer_mr_canhubk3_adap: gps_buzzer {
+			label = "GPS_BUZZER";
+			pwms = <&emios2_pwm 6 PWM_KHZ(1) PWM_POLARITY_NORMAL>;
+		};
+	};
+};
+
+&emios2 {
+	clock-divider = <160>;
+	status = "okay";
+
+	master_bus {
+		/* Internal counter's clock = 160 MHz (eMIOS1 clk) / 160 / 1 = 1 MHz */
+		emios2_bus_b {
+			mode = "MCB_UP_COUNTER";
+			prescaler = <1>;
+			period = <DT_FREQ_K(2)>;
+			status = "okay";
+		};
+	};
+
+	emios2_pwm: pwm {
+		pinctrl-0 = <&emios2_mr_canhubk3_adap>;
+		pinctrl-names = "default";
+		status = "okay";
+
+		pwm_gps_buzzer {
+			channel = <6>;
+			duty-cycle = <0>;
+			master-bus = <&emios2_bus_b>;
+			pwm-mode = "OPWMB";
+			polarity = "ACTIVE_HIGH";
+		};
+	};
+};
+
+&lpi2c0 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_FAST>;
+
+	bmm150_mr_canhubk3_adap: bmm150@12  {
+		compatible = "bosch,bmm150";
+		status = "okay";
+		reg = <0x12>;
+	};
+
+	ist8310_mr_canhubk3_adap: ist8310@e {
+		compatible = "isentek,ist8310";
+		status = "okay";
+		reg = <0xe>;
+	};
+};
+
+&wkpu {
+	status = "okay";
+};
+
+&pinctrl {
+	lpspi4_mr_canhubk3_adap: lpspi4_mr_canhubk3_adap {
+		group1 {
+			pinmux = <PTB10_LPSPI4_SCK_O>, <PTB11_LPSPI4_SIN_O>;
+			output-enable;
+		};
+		group2 {
+			pinmux = <PTB9_LPSPI4_SOUT_I>;
+			input-enable;
+		};
+	};
+
+	emios2_mr_canhubk3_adap: emios2_mr_canhubk3_adap {
+		group1 {
+			pinmux = <PTE26_EMIOS_2_CH6_H_O>;
+			output-enable;
+		};
+	};
+
+	lpuart7_mr_canhubk3_adap: lpuart7_mr_canhubk3_adap {
+		group1 {
+			pinmux = <PTE1_LPUART7_TX_O>;
+			output-enable;
+		};
+		group2 {
+			pinmux = <PTE0_LPUART7_RX>;
+			input-enable;
+		};
+	};
+};
+
+&lpuart7 {
+	status = "okay";
+	pinctrl-0 = <&lpuart7_mr_canhubk3_adap>;
+	pinctrl-names = "default";
+	current-speed = <38400>;
+};
+
+&lpspi4 {
+	status = "okay";
+	pinctrl-0 = <&lpspi4_mr_canhubk3_adap>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpiob_l 8 GPIO_ACTIVE_LOW>;
+
+	icm42688_mr_canhubk3_adap: icm42688p0@0 {
+		compatible = "invensense,icm42688";
+		reg = <0>;
+		int-gpios = <&gpioe_h 5 NXP_S32_GPIO_INT_WKPU>;
+		spi-max-frequency = <DT_FREQ_M(15)>;
+		accel-hz = <DT_FREQ_K(1)>;
+		accel-fs = <16>;
+		gyro-hz = <DT_FREQ_K(1)>;
+		gyro-fs = <2000>;
+	};
+};
