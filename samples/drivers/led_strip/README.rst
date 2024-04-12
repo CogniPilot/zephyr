@@ -14,9 +14,10 @@ Requirements
 
 Zephyr supports various LED strip chips. For example,
 
-- WS2812, such as the `NeoPixel(WS2812 compatible) LED Strip from AdaFruit`_.
 - APA102, such as the `Dotstar(APA102 compatible) LED Strip from AdaFruit`_.
+- SK9822, such as the `Dotstar LED Strip from AdaFruit`_.
 - LPD8806, such as the `LPD8806 LED Strip from AdaFruit`_.
+- WS2812, such as the `NeoPixel(WS2812 compatible) LED Strip from AdaFruit`_.
 
 - Power supply. These LED strips usually require a 5V supply.
 
@@ -24,16 +25,18 @@ Zephyr supports various LED strip chips. For example,
   signaling, which may require a level translator, such as the
   `74AHCT125 datasheet`_.
 
-.. _NeoPixel(WS2812 compatible) LED Strip from AdaFruit: https://www.adafruit.com/product/3919
+
 .. _Dotstar(APA102 compatible) LED Strip from AdaFruit: https://www.adafruit.com/product/2242
 .. _LPD8806 LED Strip from AdaFruit: https://www.adafruit.com/product/1948
+.. _Dotstar LED Strip from AdaFruit: https://www.adafruit.com/product/2328
+.. _NeoPixel(WS2812 compatible) LED Strip from AdaFruit: https://www.adafruit.com/product/3919
 .. _74AHCT125 datasheet: https://cdn-shop.adafruit.com/datasheets/74AHC125.pdf
 
 Wiring
 ******
 
-APA020 and LPD880x
-==================
+APA102, LPD880x and SK9822
+==========================
 
 #. Ensure your Zephyr board, the 5V power supply, and the LED strip
    share a common ground.
