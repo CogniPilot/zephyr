@@ -1,0 +1,15 @@
+#
+# Copyright (c) 2024 CogniPilot Foundation.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+config SK9822_STRIP
+	bool "SK9822 SPI LED strip driver"
+	default y
+	depends on DT_HAS_OPSCO_SK9822_ENABLED
+	select SPI if $(dt_compat_on_bus,$(DT_COMPAT_OPSCO_SK9822),spi)
+	select LED_STRIP_RGB_SCRATCH
+	help
+	  Enable the LED strip driver for a chain of SK9822 RGB LEDs.
+	  These are sold as DotStar by Adafruit and SK9822 by others.

@@ -476,6 +476,7 @@ opencores	OpenCores.org
 openisa	open-isa.org
 openrisc	OpenRISC.io
 openthread	OpenThread.io
+opsco	OPSCO Optoelectronics Co., Ltd.
 option	Option NV
 oranth	Shenzhen Oranth Technology Co., Ltd.
 orcl	Oracle Corporation
