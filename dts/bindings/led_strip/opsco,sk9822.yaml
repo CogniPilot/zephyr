@@ -1,0 +1,5 @@
+description: SK9822 SPI LED strip
+
+compatible: "opsco,sk9822"
+
+include: spi-device.yaml

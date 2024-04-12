@@ -2,6 +2,7 @@
 
 # Copyright (c) 2017 Linaro Limited
 # Copyright (c) 2018 Intel Corporation
+# Copyright (c) 2024 CogniPilot Foundation.
 # SPDX-License-Identifier: Apache-2.0
 
 menuconfig LED_STRIP
@@ -22,17 +23,19 @@ config LED_STRIP_INIT_PRIORITY
 	  System initialization priority for LED strip drivers.
 
 # Hidden option. The extra byte enables efficient serialization and transmission
-# for drivers which require 4 B on wire for every 3 B of color, e.g. APA102, but
-# is not normally needed.
+# for drivers which require 4 B on wire for every 3 B of color, e.g. APA102 and 
+# SK9822, but is not normally needed.
 config LED_STRIP_RGB_SCRATCH
 	bool
 
-source "drivers/led_strip/Kconfig.lpd880x"
-
-source "drivers/led_strip/Kconfig.ws2812"
-
 source "drivers/led_strip/Kconfig.apa102"
 
+source "drivers/led_strip/Kconfig.lpd880x"
+
+source "drivers/led_strip/Kconfig.sk9822"
+
 source "drivers/led_strip/Kconfig.tlc5971"
+
+source "drivers/led_strip/Kconfig.ws2812"
 
 endif # LED_STRIP
