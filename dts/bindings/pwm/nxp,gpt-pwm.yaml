@@ -1,0 +1,27 @@
+# Copyright (c) 2024, NXP
+# SPDX-License-Identifier: Apache-2.0
+
+description: NXP GPT PWM
+
+compatible: "nxp,gpt-pwm"
+
+include: [pwm-controller.yaml, pinctrl-device.yaml, base.yaml]
+
+properties:
+  prescaler:
+    type: int
+    default: 1
+    description: prescaling factor from the GPT clock. Default to 1 which is the reset value
+
+  gptfreq:
+    type: int
+    required: true
+    description: gpt frequences
+
+  "#pwm-cells":
+    const: 3
+
+pwm-cells:
+  - channel
+  - period
+  - flags

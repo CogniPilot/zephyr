@@ -21,6 +21,7 @@
 		watchdog0 = &wdog1;
 		sdhc0 = &usdhc1;
 		sw0 = &arming_button;
+		pwm-led0 = &buzzer0;
 	};
 
 	chosen {
@@ -120,6 +121,13 @@
 		enable-gpios = <&gpio5 9 GPIO_ACTIVE_HIGH>;
 		regulator-always-on;
 		status = "okay";
+	};
+
+	pwm_shell: pwm_shell {
+		compatible = "pwm-leds";
+		buzzer0: buzzer0 {
+			pwms = <&gpt3 2 PWM_HZ(50) PWM_POLARITY_NORMAL>;
+		};
 	};
 };
 
@@ -429,6 +437,13 @@
 	nxp,prescaler = <64>;
 };
 
+&gpt3 {
+	compatible = "nxp,gpt-pwm";
+	pinctrl-0 = <&pinmux_gpt_pwm_buzzer>;
+	pinctrl-names = "default";
+	#pwm-cells = <3>;
+	prescaler = <1>;
+};
 
 &gpt5 {
 	compatible = "nxp,gpt-ppm-input";

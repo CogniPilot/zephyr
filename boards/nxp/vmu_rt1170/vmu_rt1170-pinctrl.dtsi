@@ -156,6 +156,16 @@
 		};
 	};
 
+	pinmux_gpt_pwm_buzzer: pinmux_gpt_pwm_buzzer {
+		group0 {
+			pinmux = <&iomuxc_gpio_emc_b2_09_gpt3_compare2>;
+			drive-strength = "high";
+			slew-rate = "fast";
+		};
+	};
+
+	
+
 	pinmux_lpadc1: pinmux_lpadc1 {
 		group0 {
 			pinmux = <&iomuxc_gpio_ad_10_adc1_ch2a>;

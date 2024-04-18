@@ -1,0 +1,10 @@
+# Copyright 2024 NXP
+# SPDX-License-Identifier: Apache-2.0
+
+config PWM_MCUX_GPT
+	bool "MCUX GPT PWM driver"
+	default y
+	depends on DT_HAS_NXP_GPT_PWM_ENABLED
+	depends on CLOCK_CONTROL && PINCTRL
+	help
+	  Enable gpt based pwm driver.
