@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/kernel.h>
 #include <fsl_gpt.h>
 #include <fsl_clock.h>
 #include <zephyr/drivers/pinctrl.h>
@@ -31,18 +32,16 @@ struct pwm_mcux_gpt_config {
 struct pwm_mcux_gpt_data {
 	uint32_t match_period;
 	uint32_t configured_chan;
+	struct k_mutex lock;
 };
 
 
 
-static int mcux_gpt_pwm_set_cycles(const struct device *dev,
+static int mcux_gpt_pwm_set_cycles_internal(const struct device *dev,
 				       uint32_t channel, uint32_t period_cycles,
 				       uint32_t pulse_cycles, pwm_flags_t flags)
 {
 	const struct pwm_mcux_gpt_config *config = dev->config;
-	struct pwm_mcux_gpt_data *data = dev->data;
-	uint8_t duty_cycle;
-	int ret;
 
 	if (channel >= CHANNEL_COUNT) {
 		LOG_ERR("Invalid channel");
@@ -51,8 +50,7 @@ static int mcux_gpt_pwm_set_cycles(const struct device *dev,
 		
 	GPT_StopTimer(config->base);
 
-	printf("Period %u\n", period_cycles);
-	if(period_cycles == 480000) {
+	LOG_DBG("Period %u\n", period_cycles); if(period_cycles == 480000) {
 		return 0;
 	}
 
@@ -63,6 +61,26 @@ static int mcux_gpt_pwm_set_cycles(const struct device *dev,
 
 	return 0;
 }
+
+static int mcux_gpt_pwm_set_cycles(const struct device *dev,
+				       uint32_t channel, uint32_t period_cycles,
+				       uint32_t pulse_cycles, pwm_flags_t flags)
+{
+	struct pwm_mcux_gpt_data *data = dev->data;
+	int result;
+
+	if (channel >= CHANNEL_COUNT) {
+		LOG_ERR("Invalid channel");
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&data->lock, K_FOREVER);
+	result = mcux_gpt_pwm_set_cycles_internal(
+			dev, channel, period_cycles, pulse_cycles, flags);
+	k_mutex_unlock(&data->lock);
+	return result;
+}
+
 
 static int mcux_gpt_pwm_get_cycles_per_sec(const struct device *dev,
 					       uint32_t channel,
@@ -87,9 +105,9 @@ static int mcux_gpt_pwm_init(const struct device *dev)
 	const struct pwm_mcux_gpt_config *config = dev->config;
 	struct pwm_mcux_gpt_data *data = dev->data;
 	gpt_config_t pwm_config;
-	status_t status;
-	int i;
 	int err;
+
+	k_mutex_init(&data->lock);
 
 	err = pinctrl_apply_state(config->pincfg, PINCTRL_STATE_DEFAULT);
 	if (err) {
