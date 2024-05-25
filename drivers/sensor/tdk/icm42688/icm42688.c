@@ -272,10 +272,12 @@ int icm42688_init(const struct device *dev)
 #endif
 
 	data->cfg.accel_mode = ICM42688_ACCEL_LN;
-	data->cfg.accel_fs = ICM42688_ACCEL_FS_2G;
+	//data->cfg.accel_fs = ICM42688_ACCEL_FS_2G;
+	data->cfg.accel_fs = ICM42688_ACCEL_FS_16G;
 	data->cfg.accel_odr = ICM42688_ACCEL_ODR_1000;
 	data->cfg.gyro_mode = ICM42688_GYRO_LN;
-	data->cfg.gyro_fs = ICM42688_GYRO_FS_125;
+	//data->cfg.gyro_fs = ICM42688_GYRO_FS_125;
+	data->cfg.gyro_fs = ICM42688_GYRO_FS_2000;
 	data->cfg.gyro_odr = ICM42688_GYRO_ODR_1000;
 	data->cfg.temp_dis = false;
 	data->cfg.fifo_en = IS_ENABLED(CONFIG_ICM42688_STREAM);
