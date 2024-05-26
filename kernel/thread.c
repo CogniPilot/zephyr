@@ -466,7 +466,7 @@ static char *setup_thread_stack(struct k_thread *new_thread,
 		stack_buf_size, (void *)stack_ptr);
 
 #ifdef CONFIG_INIT_STACKS
-	memset(stack_buf_start, 0x00, stack_buf_size);
+	memset(stack_buf_start, 0xaa, stack_buf_size);
 #endif /* CONFIG_INIT_STACKS */
 #ifdef CONFIG_STACK_SENTINEL
 	/* Put the stack sentinel at the lowest 4 bytes of the stack area.
