@@ -245,7 +245,6 @@
 
 &lpspi1 {
 	status = "okay";
-	cs-gpios =<&gpio2 11 GPIO_ACTIVE_LOW>;
 
 	icm42688_0: icm42688p0@0 {
 		compatible = "invensense,icm42688";
@@ -263,7 +262,6 @@
 
 &lpspi2 {
 	status = "okay";
-	cs-gpios =<&gpio3 24 GPIO_ACTIVE_LOW>;
 
 	icm42688_1: icm42688p1@0 {
 		compatible = "invensense,icm42688";
