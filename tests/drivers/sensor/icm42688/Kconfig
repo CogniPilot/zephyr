@@ -1,0 +1,9 @@
+# Copyright (c) 2020 Erwin Rol <erwin@erwinrol.com>
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "ICM42688 Test"
+
+source "Kconfig.zephyr"
+
+config ICM42688_TEST_EMUL
+	bool "run emulation test"
