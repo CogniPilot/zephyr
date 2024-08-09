@@ -305,12 +305,12 @@ void icm42688_unlock(const struct device *dev)
 		.accel_fs = DT_INST_PROP(inst, accel_fs),		\
 		.accel_odr = DT_INST_PROP(inst, accel_odr),		\
 		.gyro_pwr_mode = DT_INST_PROP(inst, gyro_pwr_mode),	\
-		.gyro_fs = DT_INST_PROP(inst, gyro_fs),		\
+		.gyro_fs = DT_INST_PROP(inst, gyro_fs),			\
 		.gyro_odr = DT_INST_PROP(inst, gyro_odr),		\
 		.temp_dis = false,					\
 		.fifo_en = IS_ENABLED(CONFIG_ICM42688_STREAM),		\
 		.batch_ticks = 0,					\
-		.fifo_hires = false,					\
+		.fifo_hires = DT_INST_PROP(inst, fifo_hires),		\
 		.interrupt1_drdy = false,				\
 		.interrupt1_fifo_ths = false,				\
 		.interrupt1_fifo_full = false				\

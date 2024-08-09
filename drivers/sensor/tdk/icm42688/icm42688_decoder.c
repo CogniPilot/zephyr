@@ -302,12 +302,20 @@ static uint32_t gyro_period_ns[] = {
 static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec chan_spec,
 				uint32_t *fit, uint16_t max_count, void *data_out)
 {
+	// TODO, add this to device tree
+	const int8_t alignment[3][2] = {
+		// sign,        component
+		{1, 	1}, // x
+		{-1, 	0}, // y
+		{1, 	2}, // z
+	};
+
 	const struct icm42688_fifo_data *edata = (const struct icm42688_fifo_data *)buffer;
 	const uint8_t *buffer_end = buffer + sizeof(struct icm42688_fifo_data) + edata->fifo_count;
 	int accel_frame_count = 0;
 	int gyro_frame_count = 0;
 	int count = 0;
-	int rc;
+	int rc = 0;
 
 	if ((uintptr_t)buffer_end <= *fit || chan_spec.chan_idx != 0) {
 		return 0;
@@ -364,12 +372,14 @@ static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec c
 					   edata->header.gyro_fs, &data->shift);
 
 			data->readings[count].timestamp_delta = (accel_frame_count - 1) * period_ns;
-			rc = icm42688_read_imu_from_packet(buffer, true, edata->header.accel_fs, 0,
-							   &data->readings[count].x);
-			rc |= icm42688_read_imu_from_packet(buffer, true, edata->header.accel_fs, 1,
-							    &data->readings[count].y);
-			rc |= icm42688_read_imu_from_packet(buffer, true, edata->header.accel_fs, 2,
-							    &data->readings[count].z);
+
+			for (int i=0;i<3;i++) {
+				q31_t reading;
+				rc = icm42688_read_imu_from_packet(
+					buffer, true, edata->header.accel_fs, i, &reading);
+				data->readings[count].values[alignment[i][1]] = alignment[i][0]*reading;
+			}
+
 			if (rc != 0) {
 				accel_frame_count--;
 				buffer = frame_end;
@@ -385,12 +395,14 @@ static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec c
 					   edata->header.gyro_fs, &data->shift);
 
 			data->readings[count].timestamp_delta = (gyro_frame_count - 1) * period_ns;
-			rc = icm42688_read_imu_from_packet(buffer, false, edata->header.gyro_fs, 0,
-							   &data->readings[count].x);
-			rc |= icm42688_read_imu_from_packet(buffer, false, edata->header.gyro_fs, 1,
-							    &data->readings[count].y);
-			rc |= icm42688_read_imu_from_packet(buffer, false, edata->header.gyro_fs, 2,
-							    &data->readings[count].z);
+
+			for (int i=0;i<3;i++) {
+				q31_t reading;
+				rc = icm42688_read_imu_from_packet(
+					buffer, false, edata->header.gyro_fs, i, &reading);
+				data->readings[count].values[alignment[i][1]] = alignment[i][0]*reading;
+			}
+
 			if (rc != 0) {
 				gyro_frame_count--;
 				buffer = frame_end;

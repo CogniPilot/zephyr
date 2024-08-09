@@ -6,3 +6,9 @@
 	/delete-property/ dmas;
 	/delete-property/ dma-names;
 };
+
+&lpspi2 {
+	icm42688_1: icm42688p1@0 {
+		fifo-hires;
+	};
+};
