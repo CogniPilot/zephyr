@@ -27,7 +27,7 @@ int icm42688_reset(const struct device *dev)
 	k_msleep(3);
 
 	/* perform a soft reset to ensure a clean slate, reset bit will auto-clear */
-	res = icm42688_spi_single_write(&dev_cfg->spi, REG_DEVICE_CONFIG, BIT_SOFT_RESET);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_DEVICE_CONFIG, BIT_SOFT_RESET_CONFIG);
 
 	if (res) {
 		LOG_ERR("write REG_SIGNAL_PATH_RESET failed");
@@ -44,7 +44,7 @@ int icm42688_reset(const struct device *dev)
 		return res;
 	}
 
-	if (FIELD_GET(BIT_INT_STATUS_RESET_DONE, value) != 1) {
+	if (FIELD_GET(BIT_RESET_DONE_INT, value) != 1) {
 		LOG_ERR("unexpected RESET_DONE value, %i", value);
 		return -EINVAL;
 	}
@@ -176,6 +176,39 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 		return -EINVAL;
 	}
 
+	/* -------------------------------------*/
+	uint8_t accel_config_static2 = FIELD_PREP(MASK_ACCEL_AAF_DELT, AAF_DELT_VAL) |
+				FIELD_PREP(BIT_ACCEL_AAF_DIS, 0);
+
+	LOG_DBG("ACCEL_CONFIG_STATIC2 (0x%x) 0x%x", REG_ACCEL_CONFIG_STATIC2, accel_config_static2);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC2, accel_config_static2);
+	if (res != 0) {
+		LOG_ERR("Error writing ACCEL_CONFIG_STATIC2");
+		return -EINVAL;
+	}
+
+	uint8_t accel_config_static3 = FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_7_0, AAF_DELTSQR_VAL) |
+				FIELD_PREP(BIT_ACCEL_AAF_DIS, 0);
+
+	LOG_DBG("ACCEL_CONFIG_STATIC3 (0x%x) 0x%x", REG_ACCEL_CONFIG_STATIC3, accel_config_static3);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC3, accel_config_static3);
+	if (res != 0) {
+		LOG_ERR("Error writing ACCEL_CONFIG_STATIC3");
+		return -EINVAL;
+	}
+
+	uint8_t accel_config_static4 = FIELD_PREP(MASK_ACCEL_AAF_BITSHIFT, AAF_BITSHIFT_VAL) |
+		FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_11_8, AAF_DELTSQR_VAL >> 8);
+
+	LOG_DBG("ACCEL_CONFIG_STATIC4 (0x%x) 0x%x", REG_ACCEL_CONFIG_STATIC4, accel_config_static4);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC4, accel_config_static4);
+	if (res != 0) {
+		LOG_ERR("Error writing ACCEL_CONFIG_STATIC4");
+		return -EINVAL;
+	}
+
+	/* -------------------------------------*/
+
 	uint8_t gyro_config0 = FIELD_PREP(MASK_GYRO_ODR, cfg->gyro_odr) |
 			       FIELD_PREP(MASK_GYRO_UI_FS_SEL, cfg->gyro_fs);
 
@@ -185,6 +218,48 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 		LOG_ERR("Error writing GYRO_CONFIG0");
 		return -EINVAL;
 	}
+
+	/* -------------------------------------*/
+	uint8_t gyro_config_static2 = FIELD_PREP(BIT_GYRO_AAF_DIS, 0) |
+					FIELD_PREP(BIT_GYRO_NF_DIS, 0);
+
+	LOG_DBG("GYRO_CONFIG_STATIC2 (0x%x) 0x%x", REG_GYRO_CONFIG_STATIC2, gyro_config_static2);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC2, gyro_config_static2);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_CONFIG_STATIC2");
+		return -EINVAL;
+	}
+
+	uint8_t gyro_config_static3 = FIELD_PREP(MASK_GYRO_AAF_DELT, AAF_DELT_VAL);
+
+	LOG_DBG("GYRO_CONFIG_STATIC3 (0x%x) 0x%x", REG_GYRO_CONFIG_STATIC3, gyro_config_static3);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC3, gyro_config_static3);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_CONFIG_STATIC3");
+		return -EINVAL;
+	}
+
+	uint8_t gyro_config_static4 = FIELD_PREP(MASK_GYRO_AAF_DELTSQR_7_0, AAF_DELTSQR_VAL);
+
+	LOG_DBG("GYRO_CONFIG_STATIC4 (0x%x) 0x%x", REG_GYRO_CONFIG_STATIC4, gyro_config_static4);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC4, gyro_config_static4);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_CONFIG_STATIC4");
+		return -EINVAL;
+	}
+
+	uint8_t gyro_config_static5 = FIELD_PREP(MASK_ACCEL_AAF_BITSHIFT, AAF_BITSHIFT_VAL) |
+		FIELD_PREP(MASK_GYRO_AAF_DELTSQR_11_8, AAF_DELTSQR_VAL >> 8);
+
+	LOG_DBG("GYRO_CONFIG_STATIC5 (0x%x) 0x%x", REG_GYRO_CONFIG_STATIC5, gyro_config_static5);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC5, gyro_config_static5);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_CONFIG_STATIC5");
+		return -EINVAL;
+	}
+
+	/* -------------------------------------*/
+
 
 	/*
 	 * Accelerometer sensor need at least 10ms startup time
