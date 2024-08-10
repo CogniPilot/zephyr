@@ -199,12 +199,12 @@ static void icm42688_int_status_cb(struct rtio *r, const struct rtio_sqe *sqr, v
 	struct sensor_stream_trigger *fifo_ths_cfg =
 		icm42688_get_read_config_trigger(read_config, SENSOR_TRIG_FIFO_WATERMARK);
 	bool has_fifo_ths_trig = fifo_ths_cfg != NULL &&
-				 FIELD_GET(BIT_INT_STATUS_FIFO_THS, drv_data->int_status) != 0;
+				 FIELD_GET(BIT_FIFO_THS_INT, drv_data->int_status) != 0;
 
 	struct sensor_stream_trigger *fifo_full_cfg =
 		icm42688_get_read_config_trigger(read_config, SENSOR_TRIG_FIFO_FULL);
 	bool has_fifo_full_trig = fifo_full_cfg != NULL &&
-				  FIELD_GET(BIT_INT_STATUS_FIFO_FULL, drv_data->int_status) != 0;
+				  FIELD_GET(BIT_FIFO_FULL_INT, drv_data->int_status) != 0;
 
 	if (!has_fifo_ths_trig && !has_fifo_full_trig) {
 		gpio_pin_interrupt_configure_dt(&drv_cfg->gpio_int1, GPIO_INT_EDGE_TO_ACTIVE);

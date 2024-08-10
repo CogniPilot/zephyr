@@ -101,7 +101,7 @@ static int icm42688_sample_fetch(const struct device *dev, enum sensor_channel c
 		return res;
 	}
 
-	if (!FIELD_GET(BIT_INT_STATUS_DATA_RDY, status)) {
+	if (!FIELD_GET(BIT_DATA_RDY_INT, status)) {
 		return -EBUSY;
 	}
 
