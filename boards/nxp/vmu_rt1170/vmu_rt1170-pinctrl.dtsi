@@ -86,6 +86,13 @@
 		};
 	};
 
+	pinmux_dshot_vmu: pinmux_dshot_vmu {
+		group0 {
+			pinmux = <&iomuxc_gpio_emc_b1_23_flexio1_flexio23>;
+			slew-rate = "fast";
+		};
+	};
+
 	/* pwm pins for vmu and io ports */
 	pinmux_flexpwm_vmu_ch1: pinmux_flexpwm_vmu_ch1 {
 		group0 {

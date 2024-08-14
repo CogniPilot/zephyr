@@ -117,6 +117,11 @@
 #define IMX_CCM_TPM6_CLK               0x1605UL
 
 /* QTMR */
+#define IMX_CCM_FLEXIO_CLK             0x1700UL
+#define IMX_CCM_FLEXIO1_CLK            0x1700UL
+#define IMX_CCM_FLEXIO2_CLK            0x1701UL
+
+/* QTMR */
 #define IMX_CCM_QTMR_CLK               0x6000UL
 #define IMX_CCM_QTMR1_CLK              0x6000UL
 #define IMX_CCM_QTMR2_CLK              0x6001UL

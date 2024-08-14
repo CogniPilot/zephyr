@@ -433,6 +433,22 @@
 	nxp,prescaler = <64>;
 };
 
+&flexio1 {
+	status = "okay";
+
+	flexio0_dshot: flexio0_dshot {
+		compatible = "nxp,flexio-dshot";
+		pinctrl-0 = <&pinmux_dshot_vmu>;
+		pinctrl-names = "default";
+		status = "okay";
+
+		ch1 {
+			pin-id = <23>;
+		};
+	};
+
+};
+
 
 &gpt5 {
 	compatible = "nxp,gpt-ppm-input";
