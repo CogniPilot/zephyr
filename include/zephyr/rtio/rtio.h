@@ -484,6 +484,7 @@ static inline void rtio_sqe_prep_nop(struct rtio_sqe *sqe,
 				const struct rtio_iodev *iodev,
 				void *userdata)
 {
+	__ASSERT_NO_MSG(sqe != NULL);
 	memset(sqe, 0, sizeof(struct rtio_sqe));
 	sqe->op = RTIO_OP_NOP;
 	sqe->iodev = iodev;
@@ -500,6 +501,7 @@ static inline void rtio_sqe_prep_read(struct rtio_sqe *sqe,
 				      uint32_t len,
 				      void *userdata)
 {
+	__ASSERT_NO_MSG(sqe != NULL);
 	memset(sqe, 0, sizeof(struct rtio_sqe));
 	sqe->op = RTIO_OP_RX;
 	sqe->prio = prio;
@@ -540,6 +542,7 @@ static inline void rtio_sqe_prep_write(struct rtio_sqe *sqe,
 				       uint32_t len,
 				       void *userdata)
 {
+	__ASSERT_NO_MSG(sqe != NULL);
 	memset(sqe, 0, sizeof(struct rtio_sqe));
 	sqe->op = RTIO_OP_TX;
 	sqe->prio = prio;
@@ -567,7 +570,7 @@ static inline void rtio_sqe_prep_tiny_write(struct rtio_sqe *sqe,
 					    void *userdata)
 {
 	__ASSERT_NO_MSG(tiny_write_len <= sizeof(sqe->tiny_buf));
-
+	__ASSERT_NO_MSG(sqe != NULL);
 	memset(sqe, 0, sizeof(struct rtio_sqe));
 	sqe->op = RTIO_OP_TINY_TX;
 	sqe->prio = prio;
@@ -590,6 +593,7 @@ static inline void rtio_sqe_prep_callback(struct rtio_sqe *sqe,
 					  void *arg0,
 					  void *userdata)
 {
+	__ASSERT_NO_MSG(sqe != NULL);
 	memset(sqe, 0, sizeof(struct rtio_sqe));
 	sqe->op = RTIO_OP_CALLBACK;
 	sqe->prio = 0;
@@ -610,6 +614,7 @@ static inline void rtio_sqe_prep_transceive(struct rtio_sqe *sqe,
 					    uint32_t buf_len,
 					    void *userdata)
 {
+	__ASSERT_NO_MSG(sqe != NULL);
 	memset(sqe, 0, sizeof(struct rtio_sqe));
 	sqe->op = RTIO_OP_TXRX;
 	sqe->prio = prio;
@@ -901,6 +906,8 @@ static inline struct rtio_iodev_sqe *rtio_iodev_sqe_next(const struct rtio_iodev
 static inline struct rtio_sqe *rtio_sqe_acquire(struct rtio *r)
 {
 	struct rtio_iodev_sqe *iodev_sqe = rtio_sqe_pool_alloc(r->sqe_pool);
+
+        __ASSERT_NO_MSG(iodev_sqe != NULL);
 
 	if (iodev_sqe == NULL) {
 		return NULL;

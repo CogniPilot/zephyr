@@ -148,8 +148,11 @@ static void icm42688_fifo_count_cb(struct rtio *r, const struct rtio_sqe *sqe, v
 	 * result
 	 */
 	struct rtio_sqe *write_fifo_addr = rtio_sqe_acquire(r);
+	__ASSERT_NO_MSG(write_fifo_addr != NULL);
 	struct rtio_sqe *read_fifo_data = rtio_sqe_acquire(r);
+	__ASSERT_NO_MSG(read_fifo_data != NULL);
 	struct rtio_sqe *complete_op = rtio_sqe_acquire(r);
+	__ASSERT_NO_MSG(complete_op != NULL);
 	const uint8_t reg_addr = REG_SPI_READ_BIT | FIELD_GET(REG_ADDRESS_MASK, REG_FIFO_DATA);
 
 	rtio_sqe_prep_tiny_write(write_fifo_addr, spi_iodev, RTIO_PRIO_NORM, &reg_addr, 1, NULL);
@@ -275,6 +278,7 @@ static void icm42688_int_status_cb(struct rtio *r, const struct rtio_sqe *sqr, v
 	struct rtio_sqe *write_fifo_count_reg = rtio_sqe_acquire(r);
 	struct rtio_sqe *read_fifo_count = rtio_sqe_acquire(r);
 	struct rtio_sqe *check_fifo_count = rtio_sqe_acquire(r);
+
 	uint8_t reg = REG_SPI_READ_BIT | FIELD_GET(REG_ADDRESS_MASK, REG_FIFO_COUNTH);
 	uint8_t *read_buf = (uint8_t *)&drv_data->fifo_count;
 
