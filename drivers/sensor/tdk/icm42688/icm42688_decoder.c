@@ -16,6 +16,8 @@ LOG_MODULE_REGISTER(ICM42688_DECODER, CONFIG_SENSOR_LOG_LEVEL);
 
 #define DT_DRV_COMPAT invensense_icm42688
 
+extern struct alignment axis_align[3];
+
 static int icm42688_get_shift(enum sensor_channel channel, int accel_fs, int gyro_fs, int8_t *shift)
 {
 	switch (channel) {
@@ -302,14 +304,6 @@ static uint32_t gyro_period_ns[] = {
 static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec chan_spec,
 				uint32_t *fit, uint16_t max_count, void *data_out)
 {
-	// TODO, add this to device tree
-	const int8_t alignment[3][2] = {
-		// sign,        component
-		{1, 	1}, // x
-		{-1, 	0}, // y
-		{1, 	2}, // z
-	};
-
 	const struct icm42688_fifo_data *edata = (const struct icm42688_fifo_data *)buffer;
 	const uint8_t *buffer_end = buffer + sizeof(struct icm42688_fifo_data) + edata->fifo_count;
 	int accel_frame_count = 0;
@@ -373,11 +367,14 @@ static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec c
 
 			data->readings[count].timestamp_delta = (accel_frame_count - 1) * period_ns;
 
+			q31_t reading[3];
 			for (int i=0;i<3;i++) {
-				q31_t reading;
 				rc = icm42688_read_imu_from_packet(
-					buffer, true, edata->header.accel_fs, i, &reading);
-				data->readings[count].values[alignment[i][1]] = alignment[i][0]*reading;
+					buffer, true, edata->header.accel_fs, i, &reading[i]);
+			}
+
+			for (int i=0;i<3;i++) {
+				data->readings[count].values[i] = axis_align[i].sign*reading[axis_align[i].index];
 			}
 
 			if (rc != 0) {
@@ -396,11 +393,14 @@ static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec c
 
 			data->readings[count].timestamp_delta = (gyro_frame_count - 1) * period_ns;
 
+			q31_t reading[3];
 			for (int i=0;i<3;i++) {
-				q31_t reading;
 				rc = icm42688_read_imu_from_packet(
-					buffer, false, edata->header.gyro_fs, i, &reading);
-				data->readings[count].values[alignment[i][1]] = alignment[i][0]*reading;
+					buffer, false, edata->header.gyro_fs, i, &reading[i]);
+			}
+
+			for (int i=0;i<3;i++) {
+				data->readings[count].values[i] = axis_align[i].sign*reading[axis_align[i].index];
 			}
 
 			if (rc != 0) {

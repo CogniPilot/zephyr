@@ -177,6 +177,18 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 	}
 
 	/* -------------------------------------*/
+
+	uint8_t accel_config1 = FIELD_PREP(MASK_ACCEL_UI_FILT_ORD, BIT_ACCEL_UI_FILT_ORDER_3);
+
+	LOG_DBG("ACCEL_CONFIG1 (0x%x) 0x%x", REG_ACCEL_CONFIG1, accel_config1);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG1, accel_config1);
+	if (res != 0) {
+		LOG_ERR("Error writing ACCEL_CONFIG1");
+		return -EINVAL;
+	}
+
+
+	/* -------------------------------------*/
 	uint8_t accel_config_static2 = FIELD_PREP(MASK_ACCEL_AAF_DELT, AAF_DELT_VAL) |
 				FIELD_PREP(BIT_ACCEL_AAF_DIS, 0);
 
@@ -220,6 +232,20 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 	}
 
 	/* -------------------------------------*/
+
+	uint8_t gyro_config1 =
+		FIELD_PREP(MASK_GYRO_UI_FILT_ORD, BIT_GYRO_UI_FILT_ORDER_3) |
+		FIELD_PREP(MASK_TEMP_FILT_BW, BIT_DLPF_BW_20_LAT_8);
+
+	LOG_DBG("GYRO_CONFIG1 (0x%x) 0x%x", REG_GYRO_CONFIG1, gyro_config1);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG1, gyro_config1);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_CONFIG1");
+		return -EINVAL;
+	}
+
+
+	/* -------------------------------------*/
 	uint8_t gyro_config_static2 = FIELD_PREP(BIT_GYRO_AAF_DIS, 0) |
 					FIELD_PREP(BIT_GYRO_NF_DIS, 0);
 
@@ -260,6 +286,18 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 
 	/* -------------------------------------*/
 
+	uint8_t gyro_accel_config0 =
+		FIELD_PREP(MASK_ACCEL_UI_FILT_BW, BIT_ACCEL_UI_FILT_BW_MAX_400_ODR_DIV_20) |
+		FIELD_PREP(MASK_GYRO_UI_FILT_BW, BIT_GYRO_UI_FILT_BW_MAX_400_ODR_DIV_20);
+
+	LOG_DBG("GYRO_ACCEL_CONFIG0 (0x%x) 0x%x", REG_GYRO_ACCEL_CONFIG0, gyro_accel_config0);
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_ACCEL_CONFIG0, gyro_accel_config0);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_ACCEL_CONFIG0");
+		return -EINVAL;
+	}
+
+	/* -------------------------------------*/
 
 	/*
 	 * Accelerometer sensor need at least 10ms startup time

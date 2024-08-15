@@ -22,6 +22,24 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ICM42688, CONFIG_SENSOR_LOG_LEVEL);
 
+// TODO, add this to device tree
+const struct alignment axis_align[3] = {
+	{ //  new x = -y
+		.index = 1,
+		.sign = -1,
+	},
+	{ // new y = x
+		.index = 0,
+		.sign = 1,
+	},
+	{ // new z = z
+		.index = 2,
+		.sign = 1
+	}
+};
+
+
+
 static void icm42688_convert_accel(struct sensor_value *val, int16_t raw_val,
 				   struct icm42688_cfg *cfg)
 {
@@ -44,32 +62,32 @@ int icm42688_channel_parse_readings(enum sensor_channel chan, int16_t readings[7
 {
 	switch (chan) {
 	case SENSOR_CHAN_ACCEL_XYZ:
-		icm42688_convert_accel(&val[0], readings[1], cfg);
-		icm42688_convert_accel(&val[1], readings[2], cfg);
-		icm42688_convert_accel(&val[2], readings[3], cfg);
+		icm42688_convert_accel(&val[0], axis_align[0].sign*readings[axis_align[0].index + 1], cfg);
+		icm42688_convert_accel(&val[1], axis_align[1].sign*readings[axis_align[1].index + 1], cfg);
+		icm42688_convert_accel(&val[2], axis_align[2].sign*readings[axis_align[2].index + 1], cfg);
 		break;
 	case SENSOR_CHAN_ACCEL_X:
-		icm42688_convert_accel(val, readings[1], cfg);
+		icm42688_convert_accel(val, axis_align[0].sign*readings[axis_align[0].index + 1], cfg);
 		break;
 	case SENSOR_CHAN_ACCEL_Y:
-		icm42688_convert_accel(val, readings[2], cfg);
+		icm42688_convert_accel(val, axis_align[1].sign*readings[axis_align[1].index + 1], cfg);
 		break;
 	case SENSOR_CHAN_ACCEL_Z:
-		icm42688_convert_accel(val, readings[3], cfg);
+		icm42688_convert_accel(val, axis_align[2].sign*readings[axis_align[2].index + 1], cfg);
 		break;
 	case SENSOR_CHAN_GYRO_XYZ:
-		icm42688_convert_gyro(&val[0], readings[4], cfg);
-		icm42688_convert_gyro(&val[1], readings[5], cfg);
-		icm42688_convert_gyro(&val[2], readings[6], cfg);
+		icm42688_convert_gyro(&val[0], axis_align[0].sign*readings[axis_align[0].index + 4], cfg);
+		icm42688_convert_gyro(&val[1], axis_align[1].sign*readings[axis_align[1].index + 4], cfg);
+		icm42688_convert_gyro(&val[2], axis_align[2].sign*readings[axis_align[2].index + 4], cfg);
 		break;
 	case SENSOR_CHAN_GYRO_X:
-		icm42688_convert_gyro(val, readings[4], cfg);
+		icm42688_convert_gyro(val, axis_align[0].sign*readings[axis_align[0].index + 4], cfg);
 		break;
 	case SENSOR_CHAN_GYRO_Y:
-		icm42688_convert_gyro(val, readings[5], cfg);
+		icm42688_convert_gyro(val, axis_align[1].sign*readings[axis_align[1].index + 4], cfg);
 		break;
 	case SENSOR_CHAN_GYRO_Z:
-		icm42688_convert_gyro(val, readings[6], cfg);
+		icm42688_convert_gyro(val, axis_align[2].sign*readings[axis_align[2].index + 4], cfg);
 		break;
 	case SENSOR_CHAN_DIE_TEMP:
 		icm42688_convert_temp(val, readings[0]);
@@ -114,6 +132,7 @@ static int icm42688_sample_fetch(const struct device *dev, enum sensor_channel c
 	}
 
 	for (int i = 0; i < 7; i++) {
+
 		data->readings[i] = sys_le16_to_cpu((readings[i * 2] << 8) | readings[i * 2 + 1]);
 	}
 
