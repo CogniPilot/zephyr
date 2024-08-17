@@ -1,0 +1,3 @@
+&flexpwm1_pwm0 {
+	status = "disabled";
+};

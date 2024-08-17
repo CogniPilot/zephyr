@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 config NXP_FLEXIO_DSHOT
-	bool "NXP FlexIO DShot protocl"
+	bool "NXP FlexIO DShot protocol"
 	depends on DT_HAS_NXP_FLEXIO_ENABLED
 	depends on CLOCK_CONTROL
 	depends on DT_HAS_NXP_FLEXIO_DSHOT_ENABLED
