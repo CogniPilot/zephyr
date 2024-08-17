@@ -51,6 +51,7 @@ struct nxp_flexio_dshot_config {
 	clock_control_subsys_t clock_subsys;
 	const struct nxp_flexio_dshot_channel *channel;
 	const struct nxp_flexio_child *child;
+	const uint32_t speed;
 };
 
 struct nxp_flexio_dshot_data {
@@ -208,7 +209,7 @@ static int nxp_flexio_dshot_init(const struct device *dev)
 		return -EINVAL;
 	}
 
-	const int dshot_pwm_freq = 600000; // FIXME
+	const int dshot_pwm_freq = config->speed * 1000;
 
 	/* Calculate dshot timings based on dshot_pwm_freq */
 	data->dshot_tcmp = 0x2F00 | (((data->flexio_clk / (dshot_pwm_freq * 3) / 2) - 1) & 0xFF);
@@ -227,8 +228,11 @@ static int nxp_flexio_dshot_init(const struct device *dev)
 		return err;
 	}
 
+	data->dshot_mask = 0;
+
 	for (channel = 0; channel < config->channel->dshot_channel_count; channel++) {
 		nxp_flexio_dshot_output(dev, channel);
+		data->dshot_mask |= (1 << channel);
 	}
 
 	return 0;
@@ -241,11 +245,7 @@ void nxp_flexio_dshot_trigger(const struct device *dev)
 	FLEXIO_Type *flexio_base = (FLEXIO_Type *)(config->flexio_base);
 	struct nxp_flexio_dshot_channel_config *dshot_info;
 
-	// Calc data now since we're not event driven
-	if (data->bdshot_recv_mask != 0x0) {
-		// up_bdshot_erpm(); //FIXME
-	}
-
+	// FIXME co-existance with other flexio drivers
 	FLEXIO_ClearTimerStatusFlags(flexio_base, 0xFF);
 
 	for (uint8_t channel = 0; (channel < config->channel->dshot_channel_count); channel++) {
@@ -262,6 +262,7 @@ void nxp_flexio_dshot_trigger(const struct device *dev)
 
 	data->bdshot_recv_mask = 0x0;
 
+	// FIXME co-existance with other flexio drivers
 	FLEXIO_ClearTimerStatusFlags(flexio_base, 0xFF);
 	FLEXIO_EnableShifterStatusInterrupts(flexio_base, 0xFF);
 	FLEXIO_EnableTimerStatusInterrupts(flexio_base, 0xFF);
@@ -333,13 +334,95 @@ void nxp_flexio_dshot_data_set(const struct device *dev, unsigned channel, uint1
 
 		if (dshot_info->bdshot) {
 			flexio_base->TIMCTL[channel] = 0;
+			// FIXME coexistance with other drivers
 			FLEXIO_DisableShifterStatusInterrupts(flexio_base, 0xFF);
 
 			nxp_flexio_dshot_output(dev, channel);
 
+			// FIXME coexistance
 			FLEXIO_ClearTimerStatusFlags(flexio_base, 0xFF);
 		}
 	}
+}
+
+void up_bdshot_erpm(const struct device *dev)
+{
+	const struct nxp_flexio_dshot_config *config = dev->config;
+	struct nxp_flexio_dshot_data *data = dev->data;
+	uint32_t value;
+	uint32_t decode_data;
+	uint32_t csum_data;
+	uint8_t exponent;
+	uint16_t period;
+	uint16_t erpm;
+
+	data->bdshot_parsed_recv_mask = 0;
+
+	// Decode each individual channel
+	for (uint8_t channel = 0; (channel < DSHOT_TIMERS); channel++) {
+		if (data->bdshot_recv_mask & (1 << channel)) {
+			value = ~config->channel->dshot_info[channel].raw_response & 0xFFFFF;
+
+			/* if lowest significant isn't 1 we've got a framing error */
+			if (value & 0x1) {
+				/* Decode RLL */
+				value = (value ^ (value >> 1));
+
+				/* Decode GCR */
+				decode_data = gcr_decode[value & 0x1fU];
+				decode_data |= gcr_decode[(value >> 5U) & 0x1fU] << 4U;
+				decode_data |= gcr_decode[(value >> 10U) & 0x1fU] << 8U;
+				decode_data |= gcr_decode[(value >> 15U) & 0x1fU] << 12U;
+
+				/* Calculate checksum */
+				csum_data = decode_data;
+				csum_data = csum_data ^ (csum_data >> 8U);
+				csum_data = csum_data ^ (csum_data >> NIBBLES_SIZE);
+
+				if ((csum_data & 0xFU) != 0xFU) {
+					config->channel->dshot_info[channel].crc_error_cnt++;
+
+				} else {
+					decode_data = (decode_data >> 4) & 0xFFF;
+
+					if (decode_data == 0xFFF) {
+						erpm = 0;
+
+					} else {
+						exponent =
+							((decode_data >> 9U) & 0x7U); /* 3 bit: exponent */
+						period = (decode_data & 0x1ffU); /* 9 bit: period base */
+						period = period << exponent; /* Period in usec */
+						erpm = ((1000000U * 60U / 100U + period / 2U) /
+							period);
+					}
+
+					config->channel->dshot_info[channel].erpm = erpm;
+					data->bdshot_parsed_recv_mask |= (1 << channel);
+					config->channel->dshot_info[channel].last_no_response_cnt =
+						config->channel->dshot_info[channel]
+							.no_response_cnt;
+				}
+
+			} else {
+				config->channel->dshot_info[channel].frame_error_cnt++;
+			}
+		}
+	}
+}
+
+// TEMP helper function before moving over to sensor api
+int up_bdshot_get_erpm(const struct device *dev, uint8_t channel, int *erpm)
+{
+	const struct nxp_flexio_dshot_config *config = dev->config;
+	struct nxp_flexio_dshot_data *data = dev->data;
+
+	if (data->bdshot_parsed_recv_mask & (1 << channel)) {
+		*erpm = (int)config->channel->dshot_info[channel].erpm;
+		return 0;
+	}
+
+	return -1;
 }
 
 static int nxp_flexio_dshot_isr(void *user_data)
@@ -370,6 +453,7 @@ static int nxp_flexio_dshot_isr(void *user_data)
 				if (data->bdshot_recv_mask == data->dshot_mask) {
 					// Received telemetry on all channels
 					// Schedule workqueue?
+					up_bdshot_erpm(dev);
 				}
 			}
 		}
@@ -413,7 +497,7 @@ static int nxp_flexio_dshot_isr(void *user_data)
 #define _FLEXIO_DSHOT_GEN_CONFIG(n)                                                                \
 	{                                                                                          \
 		.pin_id = DT_PROP(n, pin_id),                                                      \
-		.bdshot = false,                                                                   \
+		.bdshot = DT_PROP(n, bidirectional_dshot),                                         \
 	},
 
 #define FLEXIO_DSHOT_GEN_CONFIG(n)                                                                 \
@@ -451,6 +535,7 @@ static int nxp_flexio_dshot_isr(void *user_data)
 		.clock_dev = DEVICE_DT_GET(DT_CLOCKS_CTLR(DT_INST_PARENT(n))),                     \
 		.clock_subsys = (clock_control_subsys_t)DT_CLOCKS_CELL(DT_INST_PARENT(n), name),   \
 		.child = &mcux_flexio_dshot_child_##n,                                             \
+		.speed = DT_INST_PROP(n, speed),                                                   \
 		FLEXIO_DSHOT_GEN_GET_CONFIG(n)};                                                   \
                                                                                                    \
 	static struct nxp_flexio_dshot_data nxp_flexio_dshot_data_##n;                             \
