@@ -20,10 +20,9 @@ int main(void)
 	while (1) {
 		nxp_flexio_dshot_trigger(dev);
 		k_sleep(K_MSEC(500));
-		if(up_bdshot_get_erpm(dev, 0, &erpm)) {
+		if (up_bdshot_get_erpm(dev, 0, &erpm)) {
 			printf("ERPM %i\n", erpm);
 		}
-		
 	}
 
 	return 0;

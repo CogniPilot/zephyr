@@ -19,7 +19,6 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME, CONFIG_NXP_FLEXIO_DSHOT_LOG_LEVEL);
 
 #define DT_DRV_COMPAT nxp_flexio_dshot
 
-#define DSHOT_TIMERS             FLEXIO_SHIFTBUFNIS_COUNT
 #define DSHOT_THROTTLE_POSITION  5u
 #define DSHOT_TELEMETRY_POSITION 4u
 #define NIBBLES_SIZE             4u
@@ -59,6 +58,7 @@ struct nxp_flexio_dshot_data {
 	uint32_t dshot_tcmp;
 	uint32_t bdshot_tcmp;
 	uint32_t dshot_mask;
+	uint32_t dshot_timer_mask;
 	uint32_t bdshot_recv_mask;
 	uint32_t bdshot_parsed_recv_mask;
 };
@@ -92,7 +92,7 @@ static void nxp_flexio_dshot_output(const struct device *dev, uint32_t channel)
 
 	/* Disable Shifter */
 	(void)memset(&shifterConfig, 0, sizeof(shifterConfig));
-	FLEXIO_SetShifterConfig(flexio_base, child->res.timer_index[channel], &shifterConfig);
+	FLEXIO_SetShifterConfig(flexio_base, child->res.shifter_index[channel], &shifterConfig);
 
 	/* No start bit, stop bit low */
 	shifterConfig.inputSource = kFLEXIO_ShifterInputFromPin;
@@ -100,14 +100,14 @@ static void nxp_flexio_dshot_output(const struct device *dev, uint32_t channel)
 	shifterConfig.shifterStart = kFLEXIO_ShifterStartBitDisabledLoadDataOnEnable;
 
 	/* Transmit mode, output to FXIO pin, inverted output for bdshot */
-	shifterConfig.timerSelect = channel;
+	shifterConfig.timerSelect = child->res.timer_index[channel];
 	shifterConfig.timerPolarity = kFLEXIO_ShifterTimerPolarityOnPositive;
 	shifterConfig.pinConfig = kFLEXIO_PinConfigOutput;
 	shifterConfig.pinSelect = dshot_info->pin_id;
 	shifterConfig.pinPolarity = dshot_info->bdshot;
 	shifterConfig.shifterMode = kFLEXIO_ShifterModeTransmit;
 
-	FLEXIO_SetShifterConfig(flexio_base, child->res.timer_index[channel], &shifterConfig);
+	FLEXIO_SetShifterConfig(flexio_base, child->res.shifter_index[channel], &shifterConfig);
 
 	(void)memset(&timerConfig, 0, sizeof(timerConfig));
 
@@ -123,7 +123,8 @@ static void nxp_flexio_dshot_output(const struct device *dev, uint32_t channel)
 	timerConfig.timerCompare = data->dshot_tcmp;
 
 	/* Baud mode, Trigger on shifter write */
-	timerConfig.triggerSelect = (4 * channel) + 1;
+	timerConfig.triggerSelect =
+		FLEXIO_TIMER_TRIGGER_SEL_SHIFTnSTAT(child->res.shifter_index[channel]);
 	timerConfig.triggerPolarity = kFLEXIO_TimerTriggerPolarityActiveLow;
 	timerConfig.triggerSource = kFLEXIO_TimerTriggerSourceInternal;
 	timerConfig.pinConfig = kFLEXIO_PinConfigOutputDisabled;
@@ -149,7 +150,7 @@ static void nxp_flexio_bdshot_input(const struct device *dev, uint32_t channel)
 	(void)memset(&shifterConfig, 0, sizeof(shifterConfig));
 
 	/* Transmit done, disable timer and reconfigure to receive*/
-	FLEXIO_SetTimerConfig(flexio_base, child->res.timer_index[channel], &timerConfig);
+	FLEXIO_SetTimerConfig(flexio_base, child->res.shifter_index[channel], &timerConfig);
 
 	/* Input data from pin, no start/stop bit*/
 	shifterConfig.inputSource = kFLEXIO_ShifterInputFromPin;
@@ -157,17 +158,17 @@ static void nxp_flexio_bdshot_input(const struct device *dev, uint32_t channel)
 	shifterConfig.shifterStart = kFLEXIO_ShifterStartBitDisabledLoadDataOnShift;
 
 	/* Shifter receive mode, on FXIO pin input */
-	shifterConfig.timerSelect = channel;
+	shifterConfig.timerSelect = child->res.timer_index[channel];
 	shifterConfig.timerPolarity = kFLEXIO_ShifterTimerPolarityOnPositive;
 	shifterConfig.pinConfig = kFLEXIO_PinConfigOutputDisabled;
 	shifterConfig.pinSelect = dshot_info->pin_id;
 	shifterConfig.pinPolarity = kFLEXIO_PinActiveLow;
 	shifterConfig.shifterMode = kFLEXIO_ShifterModeReceive;
 
-	FLEXIO_SetShifterConfig(flexio_base, child->res.timer_index[channel], &shifterConfig);
+	FLEXIO_SetShifterConfig(flexio_base, child->res.shifter_index[channel], &shifterConfig);
 
 	/* Make sure there no shifter flags high from transmission */
-	FLEXIO_ClearShifterStatusFlags(flexio_base, 1 << channel);
+	FLEXIO_ClearShifterStatusFlags(flexio_base, 1 << child->res.shifter_index[channel]);
 
 	/* Enable on pin transition, resychronize through reset on rising
 	 * edge */
@@ -182,7 +183,7 @@ static void nxp_flexio_bdshot_input(const struct device *dev, uint32_t channel)
 	timerConfig.timerCompare = data->bdshot_tcmp;
 
 	/* Baud mode, Trigger on shifter write */
-	timerConfig.triggerSelect = 2 * dshot_info->pin_id;
+	timerConfig.triggerSelect = FLEXIO_TIMER_TRIGGER_SEL_PININPUT(dshot_info->pin_id);
 	timerConfig.triggerPolarity = kFLEXIO_TimerTriggerPolarityActiveHigh;
 	timerConfig.triggerSource = kFLEXIO_TimerTriggerSourceInternal;
 	timerConfig.pinConfig = kFLEXIO_PinConfigOutputDisabled;
@@ -221,18 +222,18 @@ static int nxp_flexio_dshot_init(const struct device *dev)
 		return err;
 	}
 
-	// FIXME use timer and shifter from child_attach allocation
-
 	err = nxp_flexio_child_attach(config->flexio_dev, child);
 	if (err < 0) {
 		return err;
 	}
 
 	data->dshot_mask = 0;
+	data->dshot_timer_mask = 0;
 
 	for (channel = 0; channel < config->channel->dshot_channel_count; channel++) {
 		nxp_flexio_dshot_output(dev, channel);
-		data->dshot_mask |= (1 << channel);
+		data->dshot_mask |= (1 << child->res.shifter_index[channel]);
+		data->dshot_timer_mask |= (1 << child->res.timer_index[channel]);
 	}
 
 	return 0;
@@ -245,8 +246,7 @@ void nxp_flexio_dshot_trigger(const struct device *dev)
 	FLEXIO_Type *flexio_base = (FLEXIO_Type *)(config->flexio_base);
 	struct nxp_flexio_dshot_channel_config *dshot_info;
 
-	// FIXME co-existance with other flexio drivers
-	FLEXIO_ClearTimerStatusFlags(flexio_base, 0xFF);
+	FLEXIO_ClearTimerStatusFlags(flexio_base, data->dshot_timer_mask);
 
 	for (uint8_t channel = 0; (channel < config->channel->dshot_channel_count); channel++) {
 		dshot_info = &config->channel->dshot_info[channel];
@@ -262,10 +262,9 @@ void nxp_flexio_dshot_trigger(const struct device *dev)
 
 	data->bdshot_recv_mask = 0x0;
 
-	// FIXME co-existance with other flexio drivers
-	FLEXIO_ClearTimerStatusFlags(flexio_base, 0xFF);
-	FLEXIO_EnableShifterStatusInterrupts(flexio_base, 0xFF);
-	FLEXIO_EnableTimerStatusInterrupts(flexio_base, 0xFF);
+	FLEXIO_ClearTimerStatusFlags(flexio_base, data->dshot_timer_mask);
+	FLEXIO_EnableShifterStatusInterrupts(flexio_base, data->dshot_mask);
+	FLEXIO_EnableTimerStatusInterrupts(flexio_base, data->dshot_timer_mask);
 }
 
 /* Expand packet from 16 bits 48 to get T0H and T1H timing */
@@ -298,10 +297,11 @@ void nxp_flexio_dshot_data_set(const struct device *dev, unsigned channel, uint1
 			       bool telemetry)
 {
 	const struct nxp_flexio_dshot_config *config = dev->config;
+	struct nxp_flexio_dshot_data *data = dev->data;
 	struct nxp_flexio_dshot_channel_config *dshot_info = &config->channel->dshot_info[channel];
 	FLEXIO_Type *flexio_base = (FLEXIO_Type *)(config->flexio_base);
 
-	if (channel < DSHOT_TIMERS && dshot_info->init) {
+	if (channel < config->channel->dshot_channel_count && dshot_info->init) {
 		uint16_t csum_data;
 		uint16_t packet = 0;
 		uint16_t checksum = 0;
@@ -333,14 +333,12 @@ void nxp_flexio_dshot_data_set(const struct device *dev, unsigned channel, uint1
 		dshot_info->state = DSHOT_START;
 
 		if (dshot_info->bdshot) {
-			flexio_base->TIMCTL[channel] = 0;
-			// FIXME coexistance with other drivers
-			FLEXIO_DisableShifterStatusInterrupts(flexio_base, 0xFF);
+			flexio_base->TIMCTL[config->child->res.timer_index[channel]] = 0;
+			FLEXIO_DisableShifterStatusInterrupts(flexio_base, data->dshot_mask);
 
 			nxp_flexio_dshot_output(dev, channel);
 
-			// FIXME coexistance
-			FLEXIO_ClearTimerStatusFlags(flexio_base, 0xFF);
+			FLEXIO_ClearTimerStatusFlags(flexio_base, data->dshot_timer_mask);
 		}
 	}
 }
@@ -349,18 +347,21 @@ void up_bdshot_erpm(const struct device *dev)
 {
 	const struct nxp_flexio_dshot_config *config = dev->config;
 	struct nxp_flexio_dshot_data *data = dev->data;
+	struct nxp_flexio_child *child = (struct nxp_flexio_child *)(config->child);
 	uint32_t value;
 	uint32_t decode_data;
 	uint32_t csum_data;
 	uint8_t exponent;
 	uint16_t period;
 	uint16_t erpm;
+	uint32_t shifter_flag;
 
 	data->bdshot_parsed_recv_mask = 0;
 
 	// Decode each individual channel
-	for (uint8_t channel = 0; (channel < DSHOT_TIMERS); channel++) {
-		if (data->bdshot_recv_mask & (1 << channel)) {
+	for (uint8_t channel = 0; (channel < config->channel->dshot_channel_count); channel++) {
+		shifter_flag = 1 << child->res.shifter_index[channel];
+		if (data->bdshot_recv_mask & shifter_flag) {
 			value = ~config->channel->dshot_info[channel].raw_response & 0xFFFFF;
 
 			/* if lowest significant isn't 1 we've got a framing error */
@@ -389,9 +390,10 @@ void up_bdshot_erpm(const struct device *dev)
 						erpm = 0;
 
 					} else {
-						exponent =
-							((decode_data >> 9U) & 0x7U); /* 3 bit: exponent */
-						period = (decode_data & 0x1ffU); /* 9 bit: period base */
+						/* 3 bit: exponent */
+						exponent = ((decode_data >> 9U) & 0x7U);
+						/* 9 bit: period base */
+						period = (decode_data & 0x1ffU);
 						period = period << exponent; /* Period in usec */
 						erpm = ((1000000U * 60U / 100U + period / 2U) /
 							period);
@@ -431,24 +433,30 @@ static int nxp_flexio_dshot_isr(void *user_data)
 	const struct nxp_flexio_dshot_config *config = dev->config;
 	struct nxp_flexio_dshot_data *data = dev->data;
 	FLEXIO_Type *flexio_base = (FLEXIO_Type *)(config->flexio_base);
+	struct nxp_flexio_child *child = (struct nxp_flexio_child *)(config->child);
+
 	uint32_t flags = FLEXIO_GetShifterStatusFlags(flexio_base);
 	uint32_t channel;
+	uint32_t shifter_flag;
+	uint32_t timer_flag;
+	struct nxp_flexio_dshot_channel_config *dshot_info;
 
-	for (channel = 0; flags && channel < DSHOT_TIMERS; channel++) {
-		if (flags & (1 << channel)) {
-			FLEXIO_DisableShifterStatusInterrupts(flexio_base, 1 << channel);
+	for (channel = 0; flags && channel < config->channel->dshot_channel_count; channel++) {
+		shifter_flag = 1 << child->res.shifter_index[channel];
 
-			if (config->channel->dshot_info[channel].state == DSHOT_START) {
-				config->channel->dshot_info[channel].state = DSHOT_12BIT_FIFO;
-				flexio_base->SHIFTBUF[channel] =
-					config->channel->dshot_info[channel].irq_data;
-			} else if (config->channel->dshot_info[channel].state == BDSHOT_RECEIVE) {
-				config->channel->dshot_info[channel].state =
-					BDSHOT_RECEIVE_COMPLETE;
-				config->channel->dshot_info[channel].raw_response =
-					flexio_base->SHIFTBUFBIS[channel];
+		if (flags & shifter_flag) {
+			FLEXIO_DisableShifterStatusInterrupts(flexio_base, shifter_flag);
+			dshot_info = &config->channel->dshot_info[channel];
 
-				data->bdshot_recv_mask |= (1 << channel);
+			if (dshot_info->state == DSHOT_START) {
+				dshot_info->state = DSHOT_12BIT_FIFO;
+				flexio_base->SHIFTBUF[child->res.shifter_index[channel]] =
+					dshot_info->irq_data;
+			} else if (dshot_info->state == BDSHOT_RECEIVE) {
+				dshot_info->state = BDSHOT_RECEIVE_COMPLETE;
+				dshot_info->raw_response = flexio_base->SHIFTBUFBIS[channel];
+
+				data->bdshot_recv_mask |= shifter_flag;
 
 				if (data->bdshot_recv_mask == data->dshot_mask) {
 					// Received telemetry on all channels
@@ -461,33 +469,34 @@ static int nxp_flexio_dshot_isr(void *user_data)
 
 	flags = FLEXIO_GetTimerStatusFlags(flexio_base);
 
-	for (channel = 0; flags; (channel = (channel + 1) % DSHOT_TIMERS)) {
+	for (channel = 0; (flags & data->dshot_mask);
+	     (channel = (channel + 1) % config->channel->dshot_channel_count)) {
 		flags = FLEXIO_GetTimerStatusFlags(flexio_base);
+		timer_flag = 1 << child->res.timer_index[channel];
 
-		if (flags & (1 << channel)) {
-			FLEXIO_ClearTimerStatusFlags(flexio_base, 1 << channel);
+		if (flags & timer_flag) {
+			FLEXIO_ClearTimerStatusFlags(flexio_base, timer_flag);
+			dshot_info = &config->channel->dshot_info[channel];
 
-			if (config->channel->dshot_info[channel].state == DSHOT_12BIT_FIFO) {
-				config->channel->dshot_info[channel].state =
-					DSHOT_12BIT_TRANSFERRED;
+			if (dshot_info->state == DSHOT_12BIT_FIFO) {
+				dshot_info->state = DSHOT_12BIT_TRANSFERRED;
 
-			} else if (!config->channel->dshot_info[channel].bdshot &&
-				   config->channel->dshot_info[channel].state ==
-					   DSHOT_12BIT_TRANSFERRED) {
-				config->channel->dshot_info[channel].state =
-					DSHOT_TRANSMIT_COMPLETE;
+			} else if (!dshot_info->bdshot &&
+				   dshot_info->state == DSHOT_12BIT_TRANSFERRED) {
+				dshot_info->state = DSHOT_TRANSMIT_COMPLETE;
 
-			} else if (config->channel->dshot_info[channel].bdshot &&
-				   config->channel->dshot_info[channel].state ==
-					   DSHOT_12BIT_TRANSFERRED) {
-				FLEXIO_DisableShifterStatusInterrupts(flexio_base, 1 << channel);
-				config->channel->dshot_info[channel].state = BDSHOT_RECEIVE;
+			} else if (dshot_info->bdshot &&
+				   dshot_info->state == DSHOT_12BIT_TRANSFERRED) {
+				shifter_flag = 1 << child->res.shifter_index[channel];
+
+				FLEXIO_DisableShifterStatusInterrupts(flexio_base, shifter_flag);
+				dshot_info->state = BDSHOT_RECEIVE;
 
 				/* Configure shifter and timer to receive data */
 				nxp_flexio_bdshot_input(dev, channel);
 
 				/* Enable shifter interrupt for receiving data */
-				FLEXIO_EnableShifterStatusInterrupts(flexio_base, 1 << channel);
+				FLEXIO_EnableShifterStatusInterrupts(flexio_base, shifter_flag);
 			}
 		}
 	}
