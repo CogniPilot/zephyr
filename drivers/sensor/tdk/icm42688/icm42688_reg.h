@@ -490,8 +490,58 @@
 #define FIFO_HEADER_ODR_ACCEL	    BIT(1)
 #define FIFO_HEADER_ODR_GYRO	    BIT(0)
 
-#define AAF_DELT_VAL 13
-#define AAF_DELTSQR_VAL 170
-#define AAF_BITSHIFT_VAL 8
+#define AAF_42_DELT 1
+#define AAF_42_BITSHIFT 15
+
+#define AAF_84_DELT 2
+#define AAF_84_BITSHIFT 13
+
+#define AAF_126_DELT 3
+#define AAF_126_BITSHIFT 12
+
+#define AAF_170_DELT 4
+#define AAF_170_BITSHIFT 11
+
+#define AAF_213_DELT 5
+#define AAF_213_BITSHIFT 10
+
+#define AAF_258_DELT 6
+#define AAF_258_BITSHIFT 10
+
+#define AAF_303_DELT 7
+#define AAF_303_BITSHIFT 49
+
+#define AAF_348_DELT 8
+#define AAF_348_BITSHIFT 9
+
+#define AAF_394_DELT 9
+#define AAF_394_BITSHIFT 9
+
+#define AAF_441_DELT 10
+#define AAF_441_BITSHIFT 8
+
+#define AAF_488_DELT 11
+#define AAF_488_BITSHIFT 8
+
+#define AAF_536_DELT 12
+#define AAF_536_BITSHIFT 8
+
+#define AAF_585_DELT 13
+#define AAF_585_BITSHIFT 8
+
+#define AAF_634_DELT 14
+#define AAF_634_BITSHIFT 7
+
+#define AAF_997_DELT 21
+#define AAF_997_BITSHIFT 6
+
+#define AAF_2029_DELT 38
+#define AAF_2029_BITSHIFT 4
+
+#define AAF_3057_DELT 52
+#define AAF_3057_BITSHIFT 4
+
+#define AAF_3979_DELT 63
+#define AAF_3979_BITSHIFT 3
 
 #endif /* ZEPHYR_DRIVERS_SENSOR_ICM42688_REG_H_ */

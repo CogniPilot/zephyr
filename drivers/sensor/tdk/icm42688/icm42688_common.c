@@ -17,6 +17,18 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ICM42688_LL, CONFIG_SENSOR_LOG_LEVEL);
 
+// accel settings
+#define VAR_ACCEL_AAF_DELT 		AAF_42_DELT
+#define VAR_ACCEL_AAF_BITSHIFT 		AAF_42_BITSHIFT
+#define VAR_ACCEL_UI_FILT_ORDER 	BIT_ACCEL_UI_FILT_ORDER_3
+#define VAR_ACCEL_UI_FILT_BW 		BIT_ACCEL_UI_FILT_BW_MAX_400_ODR_DIV_10
+
+// keep gyro same as accel
+#define VAR_GYRO_AAF_DELT 		VAR_ACCEL_AAF_DELT
+#define VAR_GYRO_AAF_BITSHIFT 		VAR_ACCEL_AAF_BITSHIFT
+#define VAR_GYRO_UI_FILT_ORDER 		VAR_ACCEL_UI_FILT_ORDER
+#define VAR_GYRO_UI_FILT_BW 		VAR_ACCEL_UI_FILT_BW
+
 int icm42688_reset(const struct device *dev)
 {
 	int res;
@@ -178,7 +190,9 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 
 	/* -------------------------------------*/
 
-	uint8_t accel_config1 = FIELD_PREP(MASK_ACCEL_UI_FILT_ORD, BIT_ACCEL_UI_FILT_ORDER_3);
+	uint8_t accel_config1 = FIELD_PREP(MASK_ACCEL_UI_FILT_ORD, VAR_ACCEL_UI_FILT_ORDER) |
+				FIELD_PREP(MASK_ACCEL_DEC2_M2_ORD, BIT_ACCEL_DEC2_M2_ORDER_3);
+
 
 	LOG_DBG("ACCEL_CONFIG1 (0x%x) 0x%x", REG_ACCEL_CONFIG1, accel_config1);
 	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG1, accel_config1);
@@ -189,7 +203,7 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 
 
 	/* -------------------------------------*/
-	uint8_t accel_config_static2 = FIELD_PREP(MASK_ACCEL_AAF_DELT, AAF_DELT_VAL) |
+	uint8_t accel_config_static2 = FIELD_PREP(MASK_ACCEL_AAF_DELT, VAR_ACCEL_AAF_DELT) |
 				FIELD_PREP(BIT_ACCEL_AAF_DIS, 0);
 
 	LOG_DBG("ACCEL_CONFIG_STATIC2 (0x%x) 0x%x", REG_ACCEL_CONFIG_STATIC2, accel_config_static2);
@@ -199,8 +213,7 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 		return -EINVAL;
 	}
 
-	uint8_t accel_config_static3 = FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_7_0, AAF_DELTSQR_VAL) |
-				FIELD_PREP(BIT_ACCEL_AAF_DIS, 0);
+	uint8_t accel_config_static3 = FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_7_0, (VAR_ACCEL_AAF_DELT* VAR_ACCEL_AAF_DELT));
 
 	LOG_DBG("ACCEL_CONFIG_STATIC3 (0x%x) 0x%x", REG_ACCEL_CONFIG_STATIC3, accel_config_static3);
 	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC3, accel_config_static3);
@@ -209,12 +222,11 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 		return -EINVAL;
 	}
 
-	uint8_t accel_config_static4 = FIELD_PREP(MASK_ACCEL_AAF_BITSHIFT, AAF_BITSHIFT_VAL) |
-		FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_11_8, AAF_DELTSQR_VAL >> 8);
+	uint8_t accel_config_static4 = FIELD_PREP(MASK_ACCEL_AAF_BITSHIFT, VAR_ACCEL_AAF_BITSHIFT) |
+		FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_11_8, (VAR_ACCEL_AAF_DELT* VAR_ACCEL_AAF_DELT) >> 8);
 
 	LOG_DBG("ACCEL_CONFIG_STATIC4 (0x%x) 0x%x", REG_ACCEL_CONFIG_STATIC4, accel_config_static4);
-	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC4, accel_config_static4);
-	if (res != 0) {
+	res = icm42688_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC4, accel_config_static4); if (res != 0) {
 		LOG_ERR("Error writing ACCEL_CONFIG_STATIC4");
 		return -EINVAL;
 	}
@@ -234,8 +246,9 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 	/* -------------------------------------*/
 
 	uint8_t gyro_config1 =
-		FIELD_PREP(MASK_GYRO_UI_FILT_ORD, BIT_GYRO_UI_FILT_ORDER_3) |
-		FIELD_PREP(MASK_TEMP_FILT_BW, BIT_DLPF_BW_20_LAT_8);
+		FIELD_PREP(MASK_TEMP_FILT_BW, BIT_DLPF_BW_20_LAT_8) |
+		FIELD_PREP(MASK_GYRO_UI_FILT_ORD, VAR_GYRO_UI_FILT_ORDER) |
+		FIELD_PREP(MASK_GYRO_DEC2_M2_ORD, BIT_GYRO_DEC2_M2_ORDER_3);
 
 	LOG_DBG("GYRO_CONFIG1 (0x%x) 0x%x", REG_GYRO_CONFIG1, gyro_config1);
 	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG1, gyro_config1);
@@ -256,7 +269,7 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 		return -EINVAL;
 	}
 
-	uint8_t gyro_config_static3 = FIELD_PREP(MASK_GYRO_AAF_DELT, AAF_DELT_VAL);
+	uint8_t gyro_config_static3 = FIELD_PREP(MASK_GYRO_AAF_DELT, VAR_GYRO_AAF_DELT);
 
 	LOG_DBG("GYRO_CONFIG_STATIC3 (0x%x) 0x%x", REG_GYRO_CONFIG_STATIC3, gyro_config_static3);
 	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC3, gyro_config_static3);
@@ -265,7 +278,7 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 		return -EINVAL;
 	}
 
-	uint8_t gyro_config_static4 = FIELD_PREP(MASK_GYRO_AAF_DELTSQR_7_0, AAF_DELTSQR_VAL);
+	uint8_t gyro_config_static4 = FIELD_PREP(MASK_GYRO_AAF_DELTSQR_7_0, (VAR_GYRO_AAF_DELT* VAR_GYRO_AAF_DELT));
 
 	LOG_DBG("GYRO_CONFIG_STATIC4 (0x%x) 0x%x", REG_GYRO_CONFIG_STATIC4, gyro_config_static4);
 	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC4, gyro_config_static4);
@@ -274,8 +287,8 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 		return -EINVAL;
 	}
 
-	uint8_t gyro_config_static5 = FIELD_PREP(MASK_ACCEL_AAF_BITSHIFT, AAF_BITSHIFT_VAL) |
-		FIELD_PREP(MASK_GYRO_AAF_DELTSQR_11_8, AAF_DELTSQR_VAL >> 8);
+	uint8_t gyro_config_static5 = FIELD_PREP(MASK_ACCEL_AAF_BITSHIFT, VAR_GYRO_AAF_BITSHIFT) |
+		FIELD_PREP(MASK_GYRO_AAF_DELTSQR_11_8, (VAR_GYRO_AAF_DELT* VAR_GYRO_AAF_DELT) >> 8);
 
 	LOG_DBG("GYRO_CONFIG_STATIC5 (0x%x) 0x%x", REG_GYRO_CONFIG_STATIC5, gyro_config_static5);
 	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC5, gyro_config_static5);
@@ -287,8 +300,8 @@ int icm42688_configure(const struct device *dev, struct icm42688_cfg *cfg)
 	/* -------------------------------------*/
 
 	uint8_t gyro_accel_config0 =
-		FIELD_PREP(MASK_ACCEL_UI_FILT_BW, BIT_ACCEL_UI_FILT_BW_MAX_400_ODR_DIV_20) |
-		FIELD_PREP(MASK_GYRO_UI_FILT_BW, BIT_GYRO_UI_FILT_BW_MAX_400_ODR_DIV_20);
+		FIELD_PREP(MASK_ACCEL_UI_FILT_BW, VAR_ACCEL_UI_FILT_BW) |
+		FIELD_PREP(MASK_GYRO_UI_FILT_BW, VAR_GYRO_UI_FILT_BW);
 
 	LOG_DBG("GYRO_ACCEL_CONFIG0 (0x%x) 0x%x", REG_GYRO_ACCEL_CONFIG0, gyro_accel_config0);
 	res = icm42688_spi_single_write(&dev_cfg->spi, REG_GYRO_ACCEL_CONFIG0, gyro_accel_config0);
