@@ -14,6 +14,8 @@
 	icm42688_1: icm42688p1@0 {
 		compatible = "invensense,icm42688";
 		reg = <0>;
+		axis-align-x = <ALIGN_NEG_Y>
+		axis-align-y = <ALIGN_POS_X>
 		int-gpios = <&gpio2 7 GPIO_ACTIVE_HIGH>;
 		spi-max-frequency = <24000000>;
 		accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;

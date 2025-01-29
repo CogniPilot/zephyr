@@ -14,6 +14,11 @@
 #include <zephyr/dt-bindings/sensor/icm42688.h>
 #include <stdlib.h>
 
+struct alignment {
+	int8_t index;
+	int8_t sign;
+};
+
 static inline uint8_t icm42688_accel_fs_to_reg(uint8_t g)
 {
 	if (g >= 16) {
