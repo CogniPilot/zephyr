@@ -310,7 +310,7 @@ static uint32_t gyro_period_ns[] = {
 	[ICM42688_DT_GYRO_ODR_32000] = UINT32_C(1000000) / 32,
 };
 
-static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec chan_spec,
+static int icm42688_fifo_decode(struct icm42688_cfg *cfg, const uint8_t *buffer, struct sensor_chan_spec chan_spec,
 				uint32_t *fit, uint16_t max_count, void *data_out)
 {
 	const struct icm42688_fifo_data *edata = (const struct icm42688_fifo_data *)buffer;
@@ -383,7 +383,7 @@ static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec c
 			}
 
 			for (int i=0;i<3;i++) {
-				data->readings[count].values[i] = axis_align[i].sign*reading[axis_align[i].index];
+				data->readings[count].values[i] = cfg->axis_align[i].sign*reading[cfg->axis_align[i].index];
 			}
 
 			if (rc != 0) {
@@ -409,7 +409,7 @@ static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec c
 			}
 
 			for (int i=0;i<3;i++) {
-				data->readings[count].values[i] = axis_align[i].sign*reading[axis_align[i].index];
+				data->readings[count].values[i] = cfg->axis_align[i].sign*reading[cfg->axis_align[i].index];
 			}
 
 			if (rc != 0) {
@@ -543,14 +543,14 @@ static int icm42688_one_shot_decode(const uint8_t *buffer, struct sensor_chan_sp
 	}
 }
 
-static int icm42688_decoder_decode(const uint8_t *buffer, struct sensor_chan_spec chan_spec,
+static int icm42688_decoder_decode(struct icm42688_cfg *cfg, const uint8_t *buffer, struct sensor_chan_spec chan_spec,
 				   uint32_t *fit, uint16_t max_count, void *data_out)
 {
 	const struct icm42688_decoder_header *header =
 		(const struct icm42688_decoder_header *)buffer;
 
 	if (header->is_fifo) {
-		return icm42688_fifo_decode(buffer, chan_spec, fit, max_count, data_out);
+		return icm42688_fifo_decode(cfg, buffer, chan_spec, fit, max_count, data_out);
 	}
 	return icm42688_one_shot_decode(buffer, chan_spec, fit, max_count, data_out);
 }

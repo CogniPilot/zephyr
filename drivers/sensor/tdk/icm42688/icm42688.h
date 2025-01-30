@@ -313,6 +313,7 @@ struct icm42688_cfg {
 	bool interrupt1_drdy;
 	bool interrupt1_fifo_ths;
 	bool interrupt1_fifo_full;
+	struct alignment axis_align[3];
 };
 
 struct icm42688_trigger_entry {

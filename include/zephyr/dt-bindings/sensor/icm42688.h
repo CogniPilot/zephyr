@@ -5,6 +5,7 @@
  */
 #ifndef ZEPHYR_INCLUDE_DT_BINDINGS_TDK_ICM42688P_H_
 #define ZEPHYR_INCLUDE_DT_BINDINGS_TDK_ICM42688P_H_
+#include <zephyr/dt-bindings/sensor/sensor_axis_align.h>
 
 /**
  * @defgroup ICM42688 Invensense (TDK) ICM42688 DT Options
@@ -92,6 +93,7 @@
 #define ICM42688_DT_GYRO_ODR_12_5		11
 #define ICM42688_DT_GYRO_ODR_500		15
 /** @} */
+
 
 /** @} */
 
