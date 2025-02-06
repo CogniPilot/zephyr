@@ -1,0 +1,208 @@
+/*
+ * Copyright 2025 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include <nxp/nxp_imx95_m7.dtsi>
+#include <zephyr/dt-bindings/pwm/pwm.h>
+#include "mr_navq95a-pinctrl.dtsi"
+#include <zephyr/dt-bindings/sensor/icm42686.h>
+
+/ {
+	model = "NXP MR-NavQ95A";
+	compatible = "nxp,navq95";
+
+	chosen {
+		/* TCM */
+		zephyr,flash = &itcm;
+		zephyr,sram = &dtcm;
+
+		zephyr,flash-controller = &mx25um51345g;
+		zephyr,console = &lpuart3;
+		zephyr,shell-uart = &lpuart3;
+		zephyr,canbus = &flexcan5;
+	};
+};
+
+&flexspi {
+	status = "okay";
+	ahb-prefetch;
+	ahb-read-addr-opt;
+	ahb-bufferable;
+	ahb-cacheable;
+	rx-clock-source = <1>;
+	pinctrl-0 = <&flexspi_default>;
+	pinctrl-names = "default";
+	mx25um51345g: mx25um51345g@0 {
+		compatible = "nxp,imx-flexspi-mx25um51345g";
+		/* MX25UM51345G is 64MB, 512MBit flash part */
+		size = <DT_SIZE_M(64*8)>;
+		reg = <0>;
+		spi-max-frequency = <200000000>;
+		status = "okay";
+		jedec-id = [c2 81 3a];
+		erase-block-size = <4096>;
+		write-block-size = <2>;
+		cs-interval = <2>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/*
+			 * Partition sizes must be aligned
+			 * to the flash memory sector size of 4KB.
+			 * 
+			 * boot_partition is left out since that will
+			 * run from ITCM
+			 */
+			slot0_partition: partition@0 {
+				label = "image-0";
+				reg = <0x00000000 DT_SIZE_M(7)>;
+			};
+			slot1_partition: partition@700000 {
+				label = "image-1";
+				reg = <0x00700000 DT_SIZE_M(7)>;
+			};
+			storage_partition: partition@E00000 {
+				label = "storage";
+				reg = <0x00E00000 DT_SIZE_M(2)>;
+			};
+		};
+	};
+};
+
+&lpspi1 {
+	pinctrl-0 = <&lpspi1_default>;
+	pinctrl-names = "default";
+	status = "okay";
+	/* cs-gpios =<&gpio1 11 GPIO_ACTIVE_LOW>; */
+
+	icm42686: icm42686@0 {
+		compatible = "invensense,icm42686", "invensense,icm4268x";
+		reg = <0>;
+		/* int-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>; */
+		spi-max-frequency = <DT_FREQ_M(24)>;
+		spi-cs-setup-delay-ns = <50>;
+		spi-cs-hold-delay-ns = <50>;
+		spi-interframe-delay-ns = <50>;
+		accel-pwr-mode = <ICM42686_DT_ACCEL_LN>;
+		accel-odr = <ICM42686_DT_ACCEL_ODR_1000>;
+		accel-fs = <ICM42686_DT_ACCEL_FS_16>;
+		gyro-pwr-mode = <ICM42686_DT_GYRO_LN>;
+		gyro-odr = <ICM42686_DT_GYRO_ODR_1000>;
+		gyro-fs = <ICM42686_DT_GYRO_FS_2000>;
+	};
+};
+
+&lpspi4 {
+	pinctrl-0 = <&lpspi4_default>;
+	pinctrl-names = "default";
+	status = "okay";
+	/* cs-gpios = <&gpio2 16 GPIO_ACTIVE_LOW>,
+		<&gpio2 17 GPIO_ACTIVE_LOW>; */
+
+	bmi08x_accel: bmi08x@1 {
+		compatible = "bosch,bmi08x-accel";
+		reg = <1>;
+		/* int-gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>; */
+		spi-max-frequency = <DT_FREQ_M(10)>;
+		spi-cs-setup-delay-ns = <50>;
+		spi-cs-hold-delay-ns = <50>;
+		spi-interframe-delay-ns = <50>;
+		int1-map-io = <0x01>;
+		int2-map-io = <0x00>;
+		int1-conf-io = <0x04>;
+		int2-conf-io = <0x00>;
+		accel-hz = "800";
+		accel-fs = <24>;
+	};
+
+	bmi08x_gyro: bmi08x@2 {
+		compatible = "bosch,bmi08x-gyro";
+		reg = <2>;
+		/* int-gpios = <&gpio2 28 GPIO_ACTIVE_HIGH>; */
+		spi-max-frequency = <DT_FREQ_M(10)>;
+		spi-cs-setup-delay-ns = <50>;
+		spi-cs-hold-delay-ns = <50>;
+		spi-interframe-delay-ns = <50>;
+		int3-4-map-io = <0x01>;
+		int3-4-conf-io = <0x02>;
+		gyro-hz = "1000_116";
+		gyro-fs = <1000>;
+	};
+};
+
+&lpi2c6 {
+	status = "okay";
+	pinctrl-0 = <&lpi2c6_default>;
+	pinctrl-names = "default";
+};
+
+&lpi2c8 {
+	status = "okay";
+	pinctrl-0 = <&lpi2c8_default>;
+	pinctrl-names = "default";
+};
+
+&lpuart3 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&lpuart3_default>;
+	pinctrl-names = "default";
+};
+
+&lpuart7 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&lpuart7_default>;
+	pinctrl-names = "default";
+};
+
+&i3c2 {
+	pinctrl-0 = <&i3c2_default>;
+	pinctrl-names = "default";
+	status = "okay";
+	i2c-scl-hz = <400000>;
+
+	bmp581: bmp581@460000000000000050  {
+		compatible = "bosch,bmp581";
+		reg = <0x46 0x0 0x50>;
+	};
+
+	bmm350: bmm350@140000000000000050  {
+		compatible = "bosch,bmm350";
+		reg = <0x14 0x0 0x50>;
+	};
+};
+
+&flexcan5 {
+	pinctrl-0 = <&flexcan5_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&tpm3 {
+	status = "okay";
+	pinctrl-0 = <&tpm3_pwm1>;
+	pinctrl-names = "default";
+};
+
+&tpm4 {
+	compatible = "nxp,tpm-qdec";
+	status = "okay";
+	pinctrl-0 = <&tpm4_pwm2_pwm3>;
+	pinctrl-names = "default";
+	micro-ticks-per-rev = <685440000>;
+	/delete-property/ prescaler;
+};
+
+&tpm5 {
+	status = "okay";
+	pinctrl-0 = <&tpm5_pwm4_pwm5_pwm6>;
+	pinctrl-names = "default";
+};
