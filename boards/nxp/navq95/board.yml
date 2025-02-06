@@ -1,0 +1,9 @@
+board:
+  name: navq95
+  full_name: NavQ95
+  vendor: nxp
+  socs:
+  - name: mimx9596
+    variants:
+    - name: ddr
+      cpucluster: m7
