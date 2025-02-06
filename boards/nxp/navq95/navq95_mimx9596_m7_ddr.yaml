@@ -1,0 +1,17 @@
+#
+# Copyright 2024 NXP
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+identifier: navq95/mimx9596/m7/ddr
+name: NXP NavQ95 DDR variant
+type: mcu
+arch: arm
+ram: 256
+toolchain:
+  - zephyr
+  - gnuarmemb
+supported:
+  - uart
+vendor: nxp
