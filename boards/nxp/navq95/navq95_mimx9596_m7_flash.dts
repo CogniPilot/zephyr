@@ -1,0 +1,36 @@
+/*
+ * Copyright 2024 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include "navq95_mimx9596_m7.dts"
+
+/ {
+	model = "NXP NavQ95 NOR flash variant";
+
+	chosen {
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &code_partition;
+	};
+
+	flash0: flash@2000000 {
+		reg = <0x02000000 DT_SIZE_M(32)>;
+		status = "okay";
+	};
+};
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		code_partition: partition@0 {
+			label = "code-partition";
+			reg = <0 (DT_SIZE_M(32))>;
+		};
+	};
+};
