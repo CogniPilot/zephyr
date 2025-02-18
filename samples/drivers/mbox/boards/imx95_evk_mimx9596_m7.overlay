@@ -1,0 +1,22 @@
+/*
+ * Copyright 2023 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	mbox-consumer {
+		compatible = "vnd,mbox-consumer";
+		mboxes = <&mu7 1>, <&mu7 0>;
+		mbox-names = "tx", "rx";
+	};
+
+	soc {
+		mu7: mailbox@42440000 {
+			compatible = "nxp,mbox-imx-mu";
+			reg = <0x42440000 DT_SIZE_K(4)>;
+			interrupts = <207 0>;
+			#mbox-cells = <1>;
+		};
+	};
+};
