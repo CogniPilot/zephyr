@@ -127,3 +127,11 @@ properties:
       - 6 # ICM45686_DT_GYRO_FS_62_5
       - 7 # ICM45686_DT_GYRO_FS_31_25
       - 8 # ICM45686_DT_GYRO_FS_15_625
+
+  fifo-watermark:
+    type: int
+    default: 0
+    description: |
+      Specify the FIFO watermark level in frame count.
+      Default is power-up configuration (disabled).
+      Valid range: 0 - 104
