@@ -8,6 +8,7 @@
 
 #include <nxp/nxp_imx95_m7.dtsi>
 #include "navq95-pinctrl.dtsi"
+#include <zephyr/dt-bindings/sensor/icm42688.h>
 
 / {
 	model = "NXP NavQ95";
@@ -27,12 +28,82 @@
 	pinctrl-0 = <&lpspi1_default>;
 	pinctrl-names = "default";
 	status = "okay";
+	/* cs-gpios =<&gpio1 11 GPIO_ACTIVE_LOW>; */
+
+	icm42688_0: icm42688p0@0 {
+		compatible = "invensense,icm42688"; /* icm42686 */
+		reg = <0>;
+		/* int-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>; */
+		spi-max-frequency = <24000000>;
+		accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
+		accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
+		accel-fs = <ICM42688_DT_ACCEL_FS_16>;
+		gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
+		gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
+		gyro-fs = <ICM42688_DT_GYRO_FS_2000>;
+	};
+};
+
+&lpspi4 {
+	pinctrl-0 = <&lpspi4_default>;
+	pinctrl-names = "default";
+	status = "okay";
+	/* cs-gpios = <&gpio2 16 GPIO_ACTIVE_LOW>,
+		<&gpio2 17 GPIO_ACTIVE_LOW>; */
+
+	bmi08x_accel: bmi08x@1 {
+		compatible = "bosch,bmi08x-accel";
+		reg = <1>;
+		/* int-gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>; */
+		spi-max-frequency = <10000000>;
+		int1-map-io = <0x01>;
+		int2-map-io = <0x00>;
+		int1-conf-io = <0x04>;
+		int2-conf-io = <0x00>;
+		accel-hz = "800";
+		accel-fs = <24>;
+	};
+
+	bmi08x_gyro: bmi08x@2 {
+		compatible = "bosch,bmi08x-gyro";
+		reg = <2>;
+		/* int-gpios = <&gpio2 28 GPIO_ACTIVE_HIGH>; */
+		spi-max-frequency = <10000000>;
+		int3-4-map-io = <0x01>;
+		int3-4-conf-io = <0x02>;
+		gyro-hz = "1000_116";
+		gyro-fs = <1000>;
+	};
+};
+
+&lpi2c6 {
+	status = "okay";
+	pinctrl-0 = <&lpi2c6_default>;
+	pinctrl-names = "default";
+};
+
+&lpi2c8 {
+	status = "okay";
+	pinctrl-0 = <&lpi2c8_default>;
+	pinctrl-names = "default";
+
+	ist8310: ist8310@e {
+		compatible = "isentek,ist8310";
+		reg = <0xe>;
+	};
 };
 
 &lpuart3 {
 	status = "okay";
 	current-speed = <115200>;
 	pinctrl-0 = <&lpuart3_default>;
+	pinctrl-names = "default";
+};
+
+&lpuart7 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&lpuart7_default>;
 	pinctrl-names = "default";
 };
 
