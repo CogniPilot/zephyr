@@ -1,0 +1,7 @@
+# Copyright (c) 2025 Croxel Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+config PAT9136
+	bool "Optical Flow Sensor PAT9136"
+	help
+	  Enable driver for PAT9136 Optical Flow sensor.
