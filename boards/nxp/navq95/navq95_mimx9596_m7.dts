@@ -21,6 +21,7 @@
 
 		zephyr,console = &lpuart3;
 		zephyr,shell-uart = &lpuart3;
+		zephyr,canbus = &flexcan5;
 	};
 };
 
@@ -122,4 +123,10 @@
 		compatible = "bosch,bmp581";
 		reg = <0x46 0x0 0x50>;
 	};
+};
+
+&flexcan5 {
+	pinctrl-0 = <&flexcan5_default>;
+	pinctrl-names = "default";
+	status = "okay";
 };
