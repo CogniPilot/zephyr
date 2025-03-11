@@ -7,6 +7,7 @@
 /dts-v1/;
 
 #include <nxp/nxp_imx95_m7.dtsi>
+#include <zephyr/dt-bindings/pwm/pwm.h>
 #include "navq95-pinctrl.dtsi"
 #include <zephyr/dt-bindings/sensor/icm42688.h>
 
@@ -108,12 +109,6 @@
 	pinctrl-names = "default";
 };
 
-&tpm2 {
-	pinctrl-0 = <&tpm2_default>;
-	pinctrl-names = "default";
-	status = "okay";
-};
-
 &i3c2 {
 	pinctrl-0 = <&i3c2_default>;
 	pinctrl-names = "default";
@@ -129,4 +124,22 @@
 	pinctrl-0 = <&flexcan5_default>;
 	pinctrl-names = "default";
 	status = "okay";
+};
+
+&tpm3 {
+	status = "okay";
+	pinctrl-0 = <&tpm3_pwm1>;
+	pinctrl-names = "default";
+};
+
+&tpm4 {
+	status = "okay";
+	pinctrl-0 = <&tpm4_pwm2_pwm3>;
+	pinctrl-names = "default";
+};
+
+&tpm5 {
+	status = "okay";
+	pinctrl-0 = <&tpm5_pwm4_pwm5_pwm6>;
+	pinctrl-names = "default";
 };
