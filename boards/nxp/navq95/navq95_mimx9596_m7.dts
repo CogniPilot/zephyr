@@ -112,3 +112,14 @@
 	pinctrl-names = "default";
 	status = "okay";
 };
+
+&i3c2 {
+	pinctrl-0 = <&i3c2_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	bmp581: bmp581@460000000000000050  {
+		compatible = "bosch,bmp581";
+		reg = <0x46 0x0 0x50>;
+	};
+};
