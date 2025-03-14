@@ -133,9 +133,11 @@
 };
 
 &tpm4 {
+	compatible = "nxp,tpm-qdec";
 	status = "okay";
 	pinctrl-0 = <&tpm4_pwm2_pwm3>;
 	pinctrl-names = "default";
+	counts-per-revolution = <240>;
 };
 
 &tpm5 {
