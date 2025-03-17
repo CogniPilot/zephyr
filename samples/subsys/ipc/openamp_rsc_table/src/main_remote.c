@@ -23,6 +23,10 @@
 #include <zephyr/shell/shell_rpmsg.h>
 #endif
 
+#ifdef CONFIG_FILE_SYSTEM_RPMSGFS
+#include <zephyr/fs/rpmsgfs_fs.h>
+#endif
+
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(openamp_rsc_table);
 
@@ -93,7 +97,7 @@ static K_SEM_DEFINE(data_tty_sem, 0, 1);
 static void platform_ipm_callback(const struct device *dev, void *context,
 				  uint32_t id, volatile void *data)
 {
-	LOG_DBG("%s: msg received from mb %d", __func__, id);
+	//LOG_DBG("%s: msg received from mb %d", __func__, id);
 	k_sem_give(&data_sem);
 }
 
@@ -140,7 +144,7 @@ int mailbox_notify(void *priv, uint32_t id)
 {
 	ARG_UNUSED(priv);
 
-	LOG_DBG("%s: msg received", __func__);
+	//LOG_DBG("%s: msg received", __func__);
 	IPM_SEND(ipm_handle, 0, id, &id, 4);
 
 	return 0;
@@ -352,6 +356,10 @@ void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
 
 #ifdef CONFIG_SHELL_BACKEND_RPMSG
 	(void)shell_backend_rpmsg_init_transport(rpdev);
+#endif
+
+#ifdef CONFIG_FILE_SYSTEM_RPMSGFS
+	rpmsgfs_init_rpmsg(rpdev);
 #endif
 
 	/* start the rpmsg clients */
