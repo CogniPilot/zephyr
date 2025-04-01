@@ -209,6 +209,11 @@ static void lpspi_isr(const struct device *dev)
 		lpspi_data->fill_len = tx_current_fifo_len < ctx->rx_len ?
 					max_fill - tx_current_fifo_len : 0;
 
+		//HACK
+		if(lpspi_data->fill_len == 0xffffffff) {
+			lpspi_data->fill_len = 0x0;
+		}
+
 		lpspi_fill_tx_fifo_nop(dev);
 	}
 

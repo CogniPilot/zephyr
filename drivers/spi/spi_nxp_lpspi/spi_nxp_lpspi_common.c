@@ -126,10 +126,7 @@ int spi_mcux_configure(const struct device *dev, const struct spi_config *spi_cf
 		return ret;
 	}
 
-	ret = clock_control_get_rate(config->clock_dev, config->clock_subsys, &clock_freq);
-	if (ret) {
-		return ret;
-	}
+	clock_freq = data->clock_freq;
 
 	if (already_configured) {
 		/* Setting the baud rate in LPSPI_MasterInit requires module to be disabled. Only
@@ -226,6 +223,11 @@ int spi_nxp_init_common(const struct device *dev)
 	LPSPI_Reset(base);
 
 	config->irq_config_func(dev);
+
+	err = clock_control_get_rate(config->clock_dev, config->clock_subsys, &data->clock_freq);
+	if (err) {
+		return err;
+	}
 
 	return err;
 }

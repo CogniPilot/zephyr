@@ -51,6 +51,7 @@ struct lpspi_data {
 	struct spi_context ctx;
 	void *driver_data;
 	size_t transfer_len;
+	uint32_t clock_freq;
 };
 
 /* verifies spi_cfg validity and set up configuration of hardware for xfer */
