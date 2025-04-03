@@ -56,10 +56,12 @@ LOG_MODULE_REGISTER(openamp_rsc_table);
 K_THREAD_STACK_DEFINE(thread_mng_stack, APP_TASK_STACK_SIZE);
 K_THREAD_STACK_DEFINE(thread_rp__client_stack, APP_TASK_STACK_SIZE);
 K_THREAD_STACK_DEFINE(thread_tty_stack, APP_TTY_TASK_STACK_SIZE);
+K_THREAD_STACK_DEFINE(thread_synapse_stack, APP_TASK_STACK_SIZE);
 
 static struct k_thread thread_mng_data;
 static struct k_thread thread_rp__client_data;
 static struct k_thread thread_tty_data;
+static struct k_thread thread_synapse_data;
 
 static const struct device *const ipm_handle =
 	DEVICE_DT_GET(DT_CHOSEN(zephyr_ipc));
@@ -90,9 +92,14 @@ static struct rpmsg_rcv_msg sc_msg = {.data = rx_sc_msg};
 static struct rpmsg_endpoint tty_ept;
 static struct rpmsg_rcv_msg tty_msg;
 
+static char rx_synapse_msg[20];
+static struct rpmsg_endpoint synapse_ept;
+static struct rpmsg_rcv_msg synapse_msg = {.data = rx_synapse_msg};
+
 static K_SEM_DEFINE(data_sem, 0, 1);
 static K_SEM_DEFINE(data_sc_sem, 0, 1);
 static K_SEM_DEFINE(data_tty_sem, 0, 1);
+static K_SEM_DEFINE(data_synapse_sem, 0, 1);
 
 static void platform_ipm_callback(const struct device *dev, void *context,
 				  uint32_t id, volatile void *data)
@@ -120,6 +127,16 @@ static int rpmsg_recv_tty_callback(struct rpmsg_endpoint *ept, void *data,
 	msg->data = data;
 	msg->len = len;
 	k_sem_give(&data_tty_sem);
+
+	return RPMSG_SUCCESS;
+}
+
+static int rpmsg_recv_synapse_callback(struct rpmsg_endpoint *ept, void *data,
+					size_t len, uint32_t src, void *priv)
+{
+	memcpy(synapse_msg.data, data, len);
+	synapse_msg.len = len;
+	k_sem_give(&data_synapse_sem);
 
 	return RPMSG_SUCCESS;
 }
@@ -326,6 +343,38 @@ task_end:
 	LOG_INF("OpenAMP Linux TTY responder ended");
 }
 
+void app_rpmsg_synapse(void *arg1, void *arg2, void *arg3)
+{
+	ARG_UNUSED(arg1);
+	ARG_UNUSED(arg2);
+	ARG_UNUSED(arg3);
+
+	int ret = 0;
+
+	k_sem_take(&data_synapse_sem,  K_FOREVER);
+
+	LOG_INF("OpenAMP[remote] Synapse responder started");
+
+	ret = rpmsg_create_ept(&synapse_ept, rpdev, "rpmsg-synapse",
+			       RPMSG_ADDR_ANY, RPMSG_ADDR_ANY,
+			       rpmsg_recv_synapse_callback, NULL);
+	if (ret) {
+		LOG_ERR("[Synapse] Could not create endpoint: %d", ret);
+		goto task_end;
+	}
+
+	for(;;) {
+		k_sem_take(&data_synapse_sem,  K_FOREVER);
+		LOG_INF("[Synapse] incoming msg: %.*s", synapse_msg.len,
+						(char *)synapse_msg.data);
+		rpmsg_send(&synapse_ept, synapse_msg.data, synapse_msg.len);
+	}
+	rpmsg_destroy_ept(&synapse_ept);
+
+task_end:
+	LOG_INF("OpenAMP Synapse responder ended");
+}
+
 void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
 {
 	ARG_UNUSED(arg1);
@@ -365,6 +414,7 @@ void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
 	/* start the rpmsg clients */
 	k_sem_give(&data_sc_sem);
 	k_sem_give(&data_tty_sem);
+	k_sem_give(&data_synapse_sem);
 
 	while (1) {
 		receive_message(&msg, &len);
@@ -388,5 +438,9 @@ int main(void)
 	k_thread_create(&thread_tty_data, thread_tty_stack, APP_TTY_TASK_STACK_SIZE,
 			app_rpmsg_tty,
 			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
+	k_thread_create(&thread_synapse_data, thread_synapse_stack, APP_TASK_STACK_SIZE,
+			app_rpmsg_synapse,
+			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
+
 	return 0;
 }
