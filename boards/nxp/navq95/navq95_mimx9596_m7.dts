@@ -50,6 +50,9 @@
 	pinctrl-0 = <&lpspi4_default>;
 	pinctrl-names = "default";
 	status = "okay";
+	transfer-delay = <50>;
+	sck-pcs-delay = <25>;
+	pcs-sck-delay = <25>;
 	/* cs-gpios = <&gpio2 16 GPIO_ACTIVE_LOW>,
 		<&gpio2 17 GPIO_ACTIVE_LOW>; */
 
@@ -113,10 +116,16 @@
 	pinctrl-0 = <&i3c2_default>;
 	pinctrl-names = "default";
 	status = "okay";
+	i2c-scl-hz = <400000>;
 
 	bmp581: bmp581@460000000000000050  {
 		compatible = "bosch,bmp581";
 		reg = <0x46 0x0 0x50>;
+	};
+
+	bmm350: bmm350@140000000000000050  {
+		compatible = "bosch,bmm350";
+		reg = <0x14 0x0 0x50>;
 	};
 };
 
