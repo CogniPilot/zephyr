@@ -237,6 +237,7 @@ static bool mcux_i3c_has_error(I3C_Type *base)
 {
 	uint32_t mstatus, merrwarn;
 
+	base->MERRWARN = I3C_MERRWARN_TIMEOUT_MASK; //HACK
 	mstatus = base->MSTATUS;
 	if ((mstatus & I3C_MSTATUS_ERRWARN_MASK) == I3C_MSTATUS_ERRWARN_MASK) {
 		merrwarn = base->MERRWARN;
