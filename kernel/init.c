@@ -537,6 +537,14 @@ __boot_func
 FUNC_NO_STACK_PROTECTOR
 FUNC_NORETURN void z_cstart(void)
 {
+
+	/* 
+	 * Enable cpu_sleep_hold to prevent upredictible behaviour 
+	 * such as not waking up from _wfi on systicks 
+	 * TODO: make proper fix
+	 */
+	*(uint32_t *)0x4447080c &= ~(1 << 1);
+
 	/* gcov hook needed to get the coverage report.*/
 	gcov_static_init();
 
