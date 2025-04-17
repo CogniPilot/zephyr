@@ -4,6 +4,7 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(rpmsgfs, LOG_LEVEL_ERR);
 
+#include <stdio.h>
 #include <string.h>
 
 #include "rpmsgfs_fs_internal.h"
@@ -13,6 +14,12 @@ LOG_MODULE_DECLARE(rpmsgfs, LOG_LEVEL_ERR);
 #define RPMSGFS_SERVICE_NAME_MAX_SIZE                                                              \
 	(sizeof(RPMSGFS_SERVICE_NAME_PREFIX) + sizeof(uint32_t) * 2UL + 2UL)
 
+#if (MAX_FILE_NAME == 12)
+#warning MAX_FILE_NAME has been assigned with a short length (12). Something is wrong in the configuration
+#endif
+
+#define MAX_PATH_LEN 255
+
 /* This structure represents the overall mountpoint state.  An instance of
  * this structure is retained as inode private data on each mountpoint that
  * is mounted with a rpmsgfs filesystem.
@@ -21,7 +28,7 @@ LOG_MODULE_DECLARE(rpmsgfs, LOG_LEVEL_ERR);
 struct rpmsgfs_s {
 	struct rpmsg_endpoint ept;
 	int crefs;
-	char remote_root[MAX_FILE_NAME];
+	char remote_root[MAX_PATH_LEN + 1];
 	size_t remote_root_size;
 };
 
@@ -109,13 +116,13 @@ static int rpmsgfs_send_recv(struct rpmsgfs_s *priv, uint32_t command, int copy,
 }
 
 static ssize_t rpmsgfs_get_remote_path(const char *absolute_path, const struct fs_mount_t *mp,
-				       char remote_path[MAX_FILE_NAME])
+				       char remote_path[MAX_PATH_LEN + 1])
 {
 	struct rpmsgfs_s *priv = mp->fs_data;
 	const char *relative_path = absolute_path + strlen(mp->mnt_point);
 	size_t relative_path_size = strlen(relative_path);
 
-	if (relative_path_size + priv->remote_root_size + 1 > MAX_FILE_NAME) {
+	if (relative_path_size + priv->remote_root_size > MAX_PATH_LEN) {
 		return -ENOMEM;
 	}
 
@@ -167,7 +174,7 @@ static int rpmsgfs_open(struct fs_file_t *zfp, const char *file_name, fs_mode_t 
 	int ret = 0;
 	struct rpmsgfs_s *priv = zfp->mp->fs_data;
 
-	char path[MAX_FILE_NAME];
+	char path[MAX_PATH_LEN + 1];
 	ssize_t path_size = rpmsgfs_get_remote_path(file_name, zfp->mp, path);
 	if (path_size < 0) {
 		return path_size;
@@ -249,7 +256,7 @@ static int rpmsgfs_send_recv_path(struct rpmsgfs_s *priv, uint32_t command, cons
 static int rpmsgfs_send_recv_absolute_path(const struct fs_mount_t *mountp, uint32_t command,
 					   const char *absolute_path)
 {
-	char path[MAX_FILE_NAME];
+	char path[MAX_PATH_LEN + 1];
 	ssize_t path_size = rpmsgfs_get_remote_path(absolute_path, mountp, path);
 	if (path_size < 0) {
 		return path_size;
@@ -276,8 +283,8 @@ static int rpmsgfs_rename(struct fs_mount_t *mountp, const char *from, const cha
 	LOG_INF("%s", __func__);
 
 	struct rpmsgfs_s *priv = mountp->fs_data;
-	char from_path[MAX_FILE_NAME];
-	char to_path[MAX_FILE_NAME];
+	char from_path[MAX_PATH_LEN + 1];
+	char to_path[MAX_PATH_LEN + 1];
 	ssize_t from_path_size = rpmsgfs_get_remote_path(from, mountp, from_path) + 1;
 	if (from_path_size < 0) {
 		return from_path_size;
@@ -446,7 +453,7 @@ static int rpmsgfs_mkdir(struct fs_mount_t *mountp, const char *absolute_path)
 	struct rpmsgfs_mkdir_s *msg;
 	uint32_t space;
 
-	char path[MAX_FILE_NAME];
+	char path[MAX_PATH_LEN + 1];
 	ssize_t path_size = rpmsgfs_get_remote_path(absolute_path, mountp, path);
 	if (path_size < 0) {
 		return path_size;
@@ -547,7 +554,7 @@ static int rpmsgfs_stat(struct fs_mount_t *mountp, const char *absolute_path,
 	uint32_t space;
 	size_t msg_size;
 
-	char path[MAX_FILE_NAME];
+	char path[MAX_PATH_LEN + 1];
 	ssize_t path_size = rpmsgfs_get_remote_path(absolute_path, mountp, path);
 	if (path_size < 0) {
 		return path_size;
@@ -577,7 +584,7 @@ static int rpmsgfs_statvfs(struct fs_mount_t *mountp, const char *absolute_path,
 	uint32_t space;
 	size_t msg_size;
 
-	char path[MAX_FILE_NAME];
+	char path[MAX_PATH_LEN + 1];
 	ssize_t path_size = rpmsgfs_get_remote_path(absolute_path, mountp, path);
 	if (path_size < 0) {
 		return path_size;
@@ -627,7 +634,7 @@ static int rpmsgfs_readdir_handler(struct rpmsg_endpoint *ept, void *data, size_
 
 	cookie->result = header->result;
 	if (cookie->result >= 0) {
-		strncpy(entry->name, rsp->name, sizeof(entry->name));
+		strncpy(entry->name, rsp->name, sizeof(entry->name) - 1);
 		entry->type = rsp->type;
 		entry->size = 0; /* cannot fill in size, sorry.. */
 	}
@@ -650,7 +657,7 @@ static int rpmsgfs_stat_handler(struct rpmsg_endpoint *ept, void *data, size_t l
 		entry->size = rsp->buf.size;
 		entry->type =
 			rsp->buf.mode & RPMSGFS_S_IFDIR ? FS_DIR_ENTRY_DIR : FS_DIR_ENTRY_FILE;
-		strncpy(entry->name, rsp->pathname, MAX_FILE_NAME);
+		strncpy(entry->name, rsp->pathname, sizeof(entry->name) - 1);
 	}
 
 	k_sem_give(&cookie->sem);
@@ -754,12 +761,12 @@ static int rpmsgfs_mount(struct fs_mount_t *mountp)
 
 	priv->ept.priv = priv;
 	priv->remote_root_size = strlen(mountp->fs_data);
-	if (priv->remote_root_size > MAX_FILE_NAME - 2) {
+	if (priv->remote_root_size > MAX_PATH_LEN) {
 		ret = -ENOMEM;
 		goto _error;
 	}
 
-	strncpy(priv->remote_root, mountp->fs_data, MAX_FILE_NAME);
+	strncpy(priv->remote_root, mountp->fs_data, MAX_PATH_LEN);
 
 	/* remove slash at the end */
 	if (priv->remote_root[priv->remote_root_size - 1] == '/') {
