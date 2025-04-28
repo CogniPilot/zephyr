@@ -783,6 +783,11 @@ static int rpmsgfs_mount(struct fs_mount_t *mountp)
 		goto _error;
 	}
 
+	/* wait for an updated dest_addr by the announcement response */
+	while (priv->ept.dest_addr == RPMSG_ADDR_ANY) {
+		k_sleep(K_USEC(10));
+	}
+
 	mountp->flags |= FS_MOUNT_FLAG_USE_DISK_ACCESS;
 	mountp->fs_data = priv;
 	return 0;
