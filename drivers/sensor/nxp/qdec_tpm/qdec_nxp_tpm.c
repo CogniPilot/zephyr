@@ -16,6 +16,10 @@
 #include <zephyr/drivers/sensor/qdec_mcux.h>
 #include <zephyr/logging/log.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 LOG_MODULE_REGISTER(qdec_tpm, CONFIG_PWM_LOG_LEVEL);
 
 struct qdec_tpm_config {
@@ -26,7 +30,7 @@ struct qdec_tpm_config {
 };
 
 struct qdec_tpm_data {
-	int32_t position;
+	int32_t count;
 	uint16_t counts_per_revolution;
 };
 
@@ -79,10 +83,10 @@ static int qdec_tpm_fetch(const struct device *dev, enum sensor_channel ch)
 		return -ENOTSUP;
 	}
 
-	/* Read position */
-	data->position = TPM_GetCurrentTimerCount(config->base);
+	/* Read count */
+	data->count = TPM_GetCurrentTimerCount(config->base);
 
-	LOG_DBG("pos %d", data->position);
+	LOG_DBG("pos %d", data->count);
 
 	return 0;
 }
@@ -92,10 +96,12 @@ static int qdec_tpm_ch_get(const struct device *dev, enum sensor_channel ch,
 {
 	struct qdec_tpm_data *data = dev->data;
 
+	/* Multiply count by 2 since it increments twice on a step */
+	double rotation = (data->count * 2.0 * M_PI) / (data->counts_per_revolution * 2);
+
 	switch (ch) {
 	case SENSOR_CHAN_ROTATION:
-		sensor_value_from_float(val,
-					(data->position * 360.0f) / data->counts_per_revolution);
+		sensor_value_from_double(val, rotation);
 		break;
 	default:
 		return -ENOTSUP;
