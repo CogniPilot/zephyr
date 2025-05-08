@@ -63,6 +63,10 @@ enum ubx_msg_id_ack {
 	UBX_MSG_ID_NAK = 0x00
 };
 
+enum ubx_msg_id_mon {
+	UBX_MSG_ID_MON_VER = 0x04,
+};
+
 struct ubx_ack {
 	uint8_t class_id;
 	uint8_t msg_id;

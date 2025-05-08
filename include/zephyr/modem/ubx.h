@@ -52,7 +52,7 @@ struct modem_ubx_match {
 
 struct modem_ubx_script {
 	struct {
-		struct ubx_frame *buf;
+		const struct ubx_frame *buf;
 		uint16_t len;
 	} request;
 	struct {
@@ -85,8 +85,6 @@ struct modem_ubx_config {
 	void *user_data;
 	uint8_t *receive_buf;
 	uint16_t receive_buf_size;
-	uint8_t *work_buf;
-	uint16_t work_buf_size;
 	struct {
 		const struct modem_ubx_match *array;
 		size_t size;
