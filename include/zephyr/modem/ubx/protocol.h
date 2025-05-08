@@ -105,7 +105,7 @@ struct ubx_ack {
 		.id = _msg_id,									   \
 		.payload_size = 0,								   \
 		.payload_and_checksum = {							   \
-			UBX_CSUM(_class_id, _msg_id),						   \
+			UBX_CSUM(_class_id, _msg_id, 0, 0),					   \
 		},										   \
 	}
 
