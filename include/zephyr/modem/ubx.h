@@ -70,6 +70,7 @@ struct modem_ubx {
 	atomic_t attached;
 	uint8_t *receive_buf;
 	uint16_t receive_buf_size;
+	uint16_t receive_buf_offset;
 	struct modem_ubx_script *script;
 	struct modem_pipe *pipe;
 	struct k_work process_work;

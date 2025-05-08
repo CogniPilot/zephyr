@@ -57,25 +57,49 @@ static inline uint16_t calc_checksum(const struct ubx_frame *frame, size_t len)
 	return ((ck_a & 0xFF) | ((ck_b & 0xFF) << 8));
 }
 
-static inline bool process_incoming_data(const uint8_t *data,
-					 size_t len,
-					 const struct ubx_frame **frame_start,
-					 size_t *frame_len,
-					 size_t *iterator)
+enum ubx_process_result {
+	UBX_PROCESS_RESULT_NO_DATA_FOUND,
+	UBX_PROCESS_RESULT_FRAME_INCOMPLETE,
+	UBX_PROCESS_RESULT_FRAME_FOUND
+};
+
+static inline enum ubx_process_result process_incoming_data(const uint8_t *data,
+							    size_t len,
+							    const struct ubx_frame **frame_start,
+							    size_t *frame_len,
+							    size_t *iterator)
 {
-	for(int i  = (*iterator) ; i < ((int)len - UBX_FRM_SZ_WITHOUT_PAYLOAD) ; i++) {
-		if ((data[i] == UBX_PREAMBLE_SYNC_CHAR_1) &&
-		    (data[i +1] == UBX_PREAMBLE_SYNC_CHAR_2)) {
+	for (int i  = (*iterator) ; i < len ; i++) {
+		if (data[i] == UBX_PREAMBLE_SYNC_CHAR_1) {
 
 			const struct ubx_frame *frame = (const struct ubx_frame *)&data[i];
-			size_t frame_max_len = len - i;
+			size_t remaining_bytes = len - i;
 
-			/* Valid length filtering */
-			if (UBX_FRM_SZ(frame->payload_size) > frame_max_len) {
+			/* Wait until we've got the full header to keep processing data */
+			if (UBX_FRM_HEADER_SZ > remaining_bytes) {
+				*frame_start = frame;
+				*frame_len = remaining_bytes;
+				return UBX_PROCESS_RESULT_FRAME_INCOMPLETE;
+			}
+
+			/* Filter false-positive: Sync-byte 1 contained in payload */
+			if (frame->preamble_sync_char_2 != UBX_PREAMBLE_SYNC_CHAR_2) {
 				continue;
 			}
 
-			/* Valid checksum filtering */
+			/* Invalid length filtering */
+			if (UBX_FRM_SZ(frame->payload_size) > UBX_FRM_SZ_MAX) {
+				continue;
+			}
+
+			/* Check if we should wait until packet is completely received */
+			if (UBX_FRM_SZ(frame->payload_size) > remaining_bytes) {
+				*frame_start = frame;
+				*frame_len = remaining_bytes;
+				return UBX_PROCESS_RESULT_FRAME_INCOMPLETE;
+			}
+
+			/* We should have all the packet, so we validate checksum. */
 			uint16_t valid_checksum = calc_checksum(frame,
 								UBX_FRM_SZ(frame->payload_size));
 			uint16_t ck_a = frame->payload_and_checksum[frame->payload_size];
@@ -89,11 +113,11 @@ static inline bool process_incoming_data(const uint8_t *data,
 			*frame_len = UBX_FRM_SZ(frame->payload_size);
 
 			*iterator = i + 1;
-			return true;
+			return UBX_PROCESS_RESULT_FRAME_FOUND;
 		}
 	}
 
-	return false;
+	return UBX_PROCESS_RESULT_NO_DATA_FOUND;
 }
 
 static inline bool matches_filter(const struct ubx_frame *frame,
@@ -117,20 +141,23 @@ static void modem_ubx_process_handler(struct k_work *item)
 	struct modem_ubx *ubx = CONTAINER_OF(item, struct modem_ubx, process_work);
 	int ret;
 
-	ret = modem_pipe_receive(ubx->pipe, ubx->receive_buf, ubx->receive_buf_size);
+	ret = modem_pipe_receive(ubx->pipe,
+				 &ubx->receive_buf[ubx->receive_buf_offset],
+				 (ubx->receive_buf_size - ubx->receive_buf_offset));
 
 	const uint8_t *received_data = ubx->receive_buf;
-	size_t length = ret > 0 ? ret : 0;
+	size_t length = ret > 0 ? (ret + ubx->receive_buf_offset) : 0;
 	const struct ubx_frame *frame = NULL;
 	size_t frame_len = 0;
 	size_t iterator = 0;
-	bool more_frames_to_process;
+	enum ubx_process_result process_result;
 
 	do {
-		more_frames_to_process = process_incoming_data(received_data, length,
-							       &frame, &frame_len,
-							       &iterator);
-		if (frame_len > 0) {
+		process_result = process_incoming_data(received_data, length,
+						       &frame, &frame_len,
+						       &iterator);
+		switch (process_result) {
+		case UBX_PROCESS_RESULT_FRAME_FOUND:
 			/** Serve script first */
 			if (matches_filter(frame, &ubx->script->match.filter)) {
 				memcpy(ubx->script->response.buf, frame, frame_len);
@@ -146,8 +173,22 @@ static void modem_ubx_process_handler(struct k_work *item)
 									    ubx->user_data);
 				}
 			}
+			break;
+		case UBX_PROCESS_RESULT_FRAME_INCOMPLETE:
+			/** If we had an incomplete packet, discard prior data
+			 * and offset next pipe-receive to process remaining
+			 * info.
+			 */
+			memcpy(ubx->receive_buf, frame, frame_len);
+			ubx->receive_buf_offset = frame_len;
+			break;
+		case UBX_PROCESS_RESULT_NO_DATA_FOUND:
+			ubx->receive_buf_offset = 0;
+			break;
+		default:
+			CODE_UNREACHABLE;
 		}
-	} while (more_frames_to_process);
+	} while (process_result == UBX_PROCESS_RESULT_FRAME_FOUND);
 }
 
 static void modem_ubx_pipe_callback(struct modem_pipe *pipe,

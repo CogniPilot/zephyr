@@ -397,6 +397,37 @@ ZTEST(modem_ubx, test_rsp_discards_invalid_checksum)
 	zassert_equal(-EAGAIN, script_runner.result.ret);
 }
 
+ZTEST(modem_ubx, test_rsp_split_in_two_events)
+{
+	static struct ubx_frame test_rsp = UBX_FRAME_ACK_INITIALIZER(0x02, 0x03);
+	uint8_t *data_ptr = (uint8_t *)&test_rsp;
+
+	script_runner_start(&script_runner, 0);
+	test_thread_yield();
+
+	zassert_false(script_runner.result.done, "Script should not be done");
+
+	/** The first portion of the packet. At this point the data should not be discarded,
+	 * understanding there's more data to come.
+	 */
+	modem_backend_mock_put(&mock, data_ptr, UBX_FRM_SZ(test_rsp.payload_size) - 5);
+	test_thread_yield();
+
+	zassert_false(script_runner.result.done, "Script should not be done");
+
+	/** The other portion of the packet. This should complete the packet reception */
+	modem_backend_mock_put(&mock, &data_ptr[UBX_FRM_SZ(test_rsp.payload_size) - 5], 5);
+	test_thread_yield();
+
+	zassert_true(script_runner.result.done, "Script should be done");
+	zassert_ok(script_runner.result.ret);
+	zassert_equal(UBX_FRM_SZ(test_rsp.payload_size),
+		      script_runner.script.response.received_len,
+		      "expected: %d, got: %d",
+		      UBX_FRM_SZ(test_rsp.payload_size),
+		      script_runner.script.response.received_len);
+}
+
 ZTEST(modem_ubx, test_rsp_filters_out_non_matches)
 {
 	static struct ubx_frame test_rsp_non_match = UBX_FRAME_NAK_INITIALIZER(0x02, 0x03);
