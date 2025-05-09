@@ -31,6 +31,7 @@ struct modem_ubx;
 
 typedef void (*modem_ubx_match_callback)(struct modem_ubx *ubx,
 					 const struct ubx_frame *frame,
+					 size_t len,
 					 void *user_data);
 
 struct modem_ubx_match {

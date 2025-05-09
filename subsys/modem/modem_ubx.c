@@ -72,7 +72,7 @@ int modem_ubx_run_script(struct modem_ubx *ubx, struct modem_ubx_script *script)
 			ret = k_sem_take(&ubx->script_stopped_sem, K_MSEC(ms_per_attempt));
 		}
 		tries--;
-	} while ((tries > 0) && (ret != 0));
+	} while ((tries > 0) && (ret < 0));
 
 	k_sem_give(&ubx->script_running_sem);
 
@@ -205,7 +205,7 @@ static void modem_ubx_process_handler(struct k_work *item)
 			for (size_t i = 0 ; i < ubx->unsol_matches.size ; i++) {
 				if (ubx->unsol_matches.array[i].handler &&
 				    matches_filter(frame, &ubx->unsol_matches.array[i].filter)) {
-					ubx->unsol_matches.array[i].handler(ubx, frame,
+					ubx->unsol_matches.array[i].handler(ubx, frame, frame_len,
 									    ubx->user_data);
 				}
 			}

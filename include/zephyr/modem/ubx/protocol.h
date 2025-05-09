@@ -56,11 +56,150 @@ enum ubx_class_id {
 	UBX_CLASS_ID_MGA = 0x13,  /* Multiple GNSS Assistance Messages */
 	UBX_CLASS_ID_LOG = 0x21,  /* Logging Messages */
 	UBX_CLASS_ID_SEC = 0x27,  /* Security Feature Messages */
+	UBX_CLASS_ID_NMEA_STD = 0xF0, /* Note: Only used to configure message rate */
+	UBX_CLASS_ID_NMEA_PUBX = 0xF1, /* Note: Only used to configure message rate */
+};
+
+enum ubx_msg_id_nav {
+	UBX_MSG_ID_NAV_PVT = 0x07,
+	UBX_MSG_ID_NAV_SAT = 0x35,
+};
+
+enum ubx_nav_fix_type {
+	UBX_NAV_FIX_TYPE_NO_FIX = 0,
+	UBX_NAV_FIX_TYPE_DR = 1,
+	UBX_NAV_FIX_TYPE_2D = 2,
+	UBX_NAV_FIX_TYPE_3D = 3,
+	UBX_NAV_FIX_TYPE_GNSS_DR_COMBINED = 4,
+	UBX_NAV_FIX_TYPE_TIME_ONLY = 5,
+};
+
+struct ubx_nav_pvt {
+	struct {
+		uint32_t itow;
+		uint16_t year;
+		uint8_t month;
+		uint8_t day;
+		uint8_t hour;
+		uint8_t minute;
+		uint8_t second;
+		struct {
+			uint8_t date : 1;
+			uint8_t time : 1;
+			uint8_t time_fully_resolved : 1;
+			uint8_t mag : 1;
+			uint8_t reserved : 4;
+		} __packed valid;
+		uint32_t tacc;
+		int32_t nano;
+	} __packed time;
+	uint8_t fix_type; /** See ubx_nav_fix_type */
+	struct {
+		uint8_t gnss_fix_ok : 1;
+		uint8_t diff_soln : 1;
+		uint8_t psm_state : 3;
+		uint8_t head_vehicle_valid : 1;
+		uint8_t carr_soln : 2;
+	} __packed flags;
+	struct {
+		uint8_t reserved : 5;
+		uint8_t confirmed_avai : 1;
+		uint8_t confirmed_date : 1;
+		uint8_t confirmed_time : 1;
+	} __packed flags2;
+	struct {
+		uint8_t num_sv;
+		int32_t longitude; /* Longitude. Degrees. scaling: 1e-7 */
+		int32_t latitude; /* Latitude. Degrees. scaling: 1e-7 */
+		int32_t height; /* Height above ellipsoid. mm */
+		int32_t hmsl; /* Height above mean sea level. mm */
+		uint32_t horiz_acc; /* Horizontal accuracy estimate. mm */
+		uint32_t vert_acc; /* Vertical accuracy estimate. mm */
+		int32_t vel_north; /* NED north velocity. mm/s */
+		int32_t vel_east; /* NED east velocity. mm/s */
+		int32_t vel_down; /* NED down velocity. mm/s */
+		int32_t ground_speed; /* Ground Speed (2D). mm/s */
+		int32_t head_motion; /* Heading of Motion (2D). Degrees. scaling: 1e-5 */
+		uint32_t speed_acc; /* Speed accuracy estimated. mm/s */
+		uint32_t head_acc; /** Heading accuracy estimate (both motion and vehicle).
+				     *  Degrees. scaling: 1e-5.
+				     */
+		uint16_t pdop; /* scaling: 1e-2 */
+		struct {
+			uint8_t invalid_lon_height_hmsl : 1;
+			uint8_t last_correction_age : 4;
+			uint16_t reserved : 11;
+		} __packed flags3;
+		uint32_t reserved;
+		int32_t head_vehicle; /* Heading of vehicle (2D). Degrees. Valid if
+				       * flags.head_vehicle_valid is set.
+				       */
+		int16_t mag_decl; /* Magnetic declination. Degrees. */
+		uint16_t magacc; /* Magnetic declination accuracy. Degrees. scaling: 1e-2 */
+	} __packed nav;
+} __packed;
+
+enum ubx_nav_sat_health {
+	UBX_NAV_SAT_HEALTH_UNKNOWN = 0,
+	UBX_NAV_SAT_HEALTH_HEALTHY = 1,
+	UBX_NAV_SAT_HEALTH_UNHEALTHY = 2,
+};
+
+enum ubx_gnss_id {
+	UBX_GNSS_ID_GPS = 0,
+	UBX_GNSS_ID_SBAS = 1,
+	UBX_GNSS_ID_GALILEO = 2,
+	UBX_GNSS_ID_BEIDOU = 3,
+	UBX_GNSS_ID_QZSS = 5,
+	UBX_GNSS_ID_GLONASS = 6,
+};
+
+struct ubx_nav_sat {
+	uint32_t itow;
+	uint8_t version; /* Message version. */
+	uint8_t num_sv;
+	uint16_t reserved1;
+	struct ubx_nav_sat_info {
+		uint8_t gnss_id; /* See ubx_gnss_id */
+		uint8_t sv_id;
+		uint8_t cno; /* Carrier-to-noise ratio. dBHz */
+		int8_t elevation; /* Elevation (range: +/- 90). Degrees */
+		int16_t azimuth; /* Azimuth (range: 0 - 360). Degrees */
+		int16_t pseu_res; /* Pseudorange Residual. Meters */
+		struct {
+			uint8_t quality : 3;
+			uint8_t sv_used : 1;
+			uint8_t health : 2; /* See ubx_nav_sat_health */
+			uint8_t diff_corr : 1;
+			uint8_t smoothed : 1;
+			uint8_t orbit_src : 3;
+			uint8_t eph_avail : 1;
+			uint8_t alm_avail : 1;
+			uint8_t ano_avail : 1;
+			uint8_t aop_avail : 1;
+			uint8_t reserved1 : 1;
+			uint8_t sbas_corr_used : 1;
+			uint8_t rtcm_corr_used : 1;
+			uint8_t slas_corr_used : 1;
+			uint8_t spartn_corr_used : 1;
+			uint8_t pr_corr_used : 1;
+			uint8_t cr_corr_used : 1;
+			uint8_t do_corr_used : 1;
+			uint8_t clas_corr_used : 1;
+			uint8_t reserved : 8;
+		} __packed flags;
+	} sat[];
 };
 
 enum ubx_msg_id_ack {
 	UBX_MSG_ID_ACK = 0x01,
 	UBX_MSG_ID_NAK = 0x00
+};
+
+enum ubx_msg_id_cfg {
+	UBX_MSG_ID_CFG_MSG = 0x01,
+	UBX_MSG_ID_CFG_RST = 0x04,
+	UBX_MSG_ID_CFG_RATE = 0x08,
 };
 
 enum ubx_msg_id_mon {
@@ -72,11 +211,101 @@ struct ubx_ack {
 	uint8_t msg_id;
 };
 
+enum ubx_cfg_rst_start_mode {
+	UBX_CFG_RST_HOT_START = 0x0000,
+	UBX_CFG_RST_WARM_START = 0x0001,
+	UBX_CFG_RST_COLD_START = 0xFFFF,
+};
+
+enum ubx_cfg_rst_mode {
+	UBX_CFG_RST_MODE_HW = 0x00,
+	UBX_CFG_RST_MODE_SW = 0x01,
+	UBX_CFG_RST_MODE_GNSS_STOP = 0x08,
+	UBX_CFG_RST_MODE_GNSS_START = 0x09,
+};
+
+struct ubx_cfg_rst {
+	uint16_t nav_bbr_mask;
+	uint8_t reset_mode;
+	uint8_t reserved;
+};
+
+enum ubx_cfg_rate_time_ref {
+	UBX_CFG_RATE_TIME_REF_UTC = 0,
+	UBX_CFG_RATE_TIME_REF_GPS = 1,
+	UBX_CFG_RATE_TIME_REF_GLONASS = 2,
+	UBX_CFG_RATE_TIME_REF_BEIDOU = 3,
+	UBX_CFG_RATE_TIME_REF_GALILEO = 4,
+	UBX_CFG_RATE_TIME_REF_NAVIC = 5,
+};
+
+struct ubx_cfg_rate {
+	uint16_t meas_rate_ms;
+	uint16_t nav_rate;
+	uint16_t time_ref;
+};
+
+enum ubx_msg_id_nmea_std {
+	UBX_MSG_ID_NMEA_STD_DTM = 0x0A,
+	UBX_MSG_ID_NMEA_STD_GBQ = 0x44,
+	UBX_MSG_ID_NMEA_STD_GBS = 0x09,
+	UBX_MSG_ID_NMEA_STD_GGA = 0x00,
+	UBX_MSG_ID_NMEA_STD_GLL = 0x01,
+	UBX_MSG_ID_NMEA_STD_GLQ = 0x43,
+	UBX_MSG_ID_NMEA_STD_GNQ = 0x42,
+	UBX_MSG_ID_NMEA_STD_GNS = 0x0D,
+	UBX_MSG_ID_NMEA_STD_GPQ = 0x40,
+	UBX_MSG_ID_NMEA_STD_GRS = 0x06,
+	UBX_MSG_ID_NMEA_STD_GSA = 0x02,
+	UBX_MSG_ID_NMEA_STD_GST = 0x07,
+	UBX_MSG_ID_NMEA_STD_GSV = 0x03,
+	UBX_MSG_ID_NMEA_STD_RMC = 0x04,
+	UBX_MSG_ID_NMEA_STD_THS = 0x0E,
+	UBX_MSG_ID_NMEA_STD_TXT = 0x41,
+	UBX_MSG_ID_NMEA_STD_VLW = 0x0F,
+	UBX_MSG_ID_NMEA_STD_VTG = 0x05,
+	UBX_MSG_ID_NMEA_STD_ZDA = 0x08,
+};
+
+enum ubx_msg_id_nmea_pubx {
+	UBX_MSG_ID_NMEA_PUBX_CONFIG = 0x41,
+	UBX_MSG_ID_NMEA_PUBX_POSITION = 0x00,
+	UBX_MSG_ID_NMEA_PUBX_RATE = 0x40,
+	UBX_MSG_ID_NMEA_PUBX_SVSTATUS = 0x03,
+	UBX_MSG_ID_NMEA_PUBX_TIME = 0x04,
+};
+
+struct ubx_cfg_msg_rate {
+	uint8_t class;
+	uint8_t id;
+	uint8_t rate;
+};
+
+struct ubx_mon_ver {
+	char sw_ver[30];
+	char hw_ver[10];
+};
+
 #define UBX_FRAME_ACK_INITIALIZER(_class_id, _msg_id)						   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_ACK, UBX_MSG_ID_ACK, _class_id, _msg_id)
 
 #define UBX_FRAME_NAK_INITIALIZER(_class_id, _msg_id)						   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_ACK, UBX_MSG_ID_NAK, _class_id, _msg_id)
+
+#define UBX_FRAME_CFG_RST_INITIALIZER(_start_mode, _reset_mode)					   \
+	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RST,			   \
+				      (_start_mode & 0xFF), ((_start_mode >> 8) & 0xFF),	   \
+				       _reset_mode, 0)
+
+#define UBX_FRAME_CFG_RATE_INITIALIZER(_meas_rate_ms, _nav_rate, _time_ref)			   \
+	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RATE,			   \
+				      (_meas_rate_ms & 0xFF), ((_meas_rate_ms >> 8) & 0xFF),	   \
+				      (_nav_rate & 0xFF), ((_nav_rate >> 8) & 0xFF),		   \
+				      (_time_ref & 0xFF), ((_time_ref >> 8) & 0xFF))
+
+#define UBX_FRAME_CFG_MSG_RATE_INITIALIZER(_class_id, _msg_id, _rate)				   \
+	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_MSG,			   \
+				      _class_id, _msg_id, _rate)
 
 #define UBX_FRAME_INITIALIZER_PAYLOAD(_class_id, _msg_id, ...)					   \
 	_UBX_FRAME_INITIALIZER_PAYLOAD(_class_id, _msg_id, __VA_ARGS__)

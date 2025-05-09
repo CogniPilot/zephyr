@@ -30,13 +30,13 @@ static struct modem_pipe *mock_pipe;
 
 static atomic_t callback_called;
 
-static void on_nak_received(struct modem_ubx *ubx, const struct ubx_frame *frame,
+static void on_nak_received(struct modem_ubx *ubx, const struct ubx_frame *frame, size_t len,
 			    void *user_data)
 {
 	atomic_set_bit(&callback_called, MODEM_UBX_UTEST_ON_NAK_RECEIVED_BIT);
 }
 
-static void on_ack_received(struct modem_ubx *ubx, const struct ubx_frame *frame,
+static void on_ack_received(struct modem_ubx *ubx, const struct ubx_frame *frame, size_t len,
 			    void *user_data)
 {
 	atomic_set_bit(&callback_called, MODEM_UBX_UTEST_ON_ACK_RECEIVED_BIT);
