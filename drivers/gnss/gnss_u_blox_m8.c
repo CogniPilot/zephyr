@@ -9,6 +9,7 @@
 #define DT_DRV_COMPAT u_blox_m8
 
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/gnss.h>
 #include <zephyr/drivers/gnss/gnss_publish.h>
 
@@ -273,20 +274,55 @@ static int ubx_m8_init(const struct device *dev)
 	}
 
 	/** TODO: Implement baud-rate detection/setting. */
+	{
+		uint32_t baudrates[] = {
+			4800,
+			19200,
+			38400,
+			57600,
+			115200,
+			230400,
+			460800,
+			921600,
+			9600,
+		};
+		struct uart_config uart_cfg;
 
-	const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
+		err = uart_config_get(cfg->bus, &uart_cfg);
+		if (err < 0) {
+			LOG_ERR("Failed to get UART config: %d", err);
+			return err;
+		}
+
+		uint32_t desired_baudrate = uart_cfg.baudrate;
+
+		for (size_t i = 0 ; i < ARRAY_SIZE(baudrates) ; i++) {
+			uart_cfg.baudrate = baudrates[i];
+			err = uart_configure(cfg->bus, &uart_cfg);
+			if (err < 0) {
+				LOG_ERR("Failed to configure UART: %d", err);
+			}
+
+			const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
 								UBX_CLASS_ID_MON,
 								UBX_MSG_ID_MON_VER);
-	struct ubx_mon_ver ver;
+			struct ubx_mon_ver ver;
 
-	err = ubx_m8_msg_get(dev, &version_get, UBX_FRM_SZ(version_get.payload_size),
-				(void *)&ver, sizeof(ver));
-	if (err != 0) {
-		LOG_ERR("Failted to get Modem Version infoL %d", err);
-		return err;
+			err = ubx_m8_msg_get(dev, &version_get,
+					     UBX_FRM_SZ(version_get.payload_size),
+					     (void *)&ver, sizeof(ver));
+			if (err != 0) {
+				LOG_ERR("Failted to get Modem Version info: %d", err);
+			} else {
+				LOG_INF("Found baud-rate: %d", baudrates[i]);
+				break;
+			}
+		}
+		if (err != 0) {
+			LOG_ERR("Failed to find baudrate...");
+			return err;
+		}
 	}
-
-	LOG_INF("Modem SW Ver: %s, HW Ver: %s", ver.sw_ver, ver.hw_ver);
 
 	const static struct ubx_frame stop_gnss = UBX_FRAME_CFG_RST_INITIALIZER(
 							UBX_CFG_RST_HOT_START,
