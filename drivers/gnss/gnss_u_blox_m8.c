@@ -21,6 +21,9 @@ LOG_MODULE_REGISTER(ubx_m8, CONFIG_GNSS_LOG_LEVEL);
 
 struct ubx_m8_config {
 	const struct device *bus;
+	uint32_t initial_baudrate;
+	const struct ubx_frame *ubx_port_cfg_frame;
+	uint32_t desired_baudrate;
 };
 
 struct ubx_m8_data {
@@ -275,17 +278,6 @@ static int ubx_m8_init(const struct device *dev)
 
 	/** TODO: Implement baud-rate detection/setting. */
 	{
-		uint32_t baudrates[] = {
-			4800,
-			19200,
-			38400,
-			57600,
-			115200,
-			230400,
-			460800,
-			921600,
-			9600,
-		};
 		struct uart_config uart_cfg;
 
 		err = uart_config_get(cfg->bus, &uart_cfg);
@@ -294,35 +286,61 @@ static int ubx_m8_init(const struct device *dev)
 			return err;
 		}
 
-		uint32_t desired_baudrate = uart_cfg.baudrate;
+		// uint32_t desired_baudrate = uart_cfg.baudrate;
+		uint32_t desired_baudrate = cfg->desired_baudrate;
+		uint32_t initial_baudrate = cfg->initial_baudrate;
 
-		for (size_t i = 0 ; i < ARRAY_SIZE(baudrates) ; i++) {
-			uart_cfg.baudrate = baudrates[i];
-			err = uart_configure(cfg->bus, &uart_cfg);
-			if (err < 0) {
-				LOG_ERR("Failed to configure UART: %d", err);
-			}
-
-			const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
-								UBX_CLASS_ID_MON,
-								UBX_MSG_ID_MON_VER);
-			struct ubx_mon_ver ver;
-
-			err = ubx_m8_msg_get(dev, &version_get,
-					     UBX_FRM_SZ(version_get.payload_size),
-					     (void *)&ver, sizeof(ver));
-			if (err != 0) {
-				LOG_ERR("Failted to get Modem Version info: %d", err);
-			} else {
-				LOG_INF("Found baud-rate: %d", baudrates[i]);
-				break;
-			}
+		uart_cfg.baudrate = initial_baudrate;
+		err = uart_configure(cfg->bus, &uart_cfg);
+		if (err < 0) {
+			LOG_ERR("Failed to configure UART: %d", err);
 		}
+
+		/** One per instance, hence why it's instantiated from device inst macro */
+		const struct ubx_frame *prt_cfg_frame = cfg->ubx_port_cfg_frame;
+		
+		LOG_INF("PRT CFG FRAME - Size: %d, Payload size: %d, Desired speed: %d", UBX_FRM_SZ(prt_cfg_frame->payload_size), prt_cfg_frame->payload_size, desired_baudrate);
+
+
+		(void)ubx_m8_msg_set(dev, prt_cfg_frame,
+				     UBX_FRM_SZ(prt_cfg_frame->payload_size), false);
+
+		uart_cfg.baudrate = desired_baudrate;
+
+		err = uart_configure(cfg->bus, &uart_cfg);
+		if (err < 0) {
+			LOG_ERR("Failed to configure UART: %d", err);
+		}
+
+		// k_sleep(K_SECONDS(3));
+
+		const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
+							UBX_CLASS_ID_MON,
+							UBX_MSG_ID_MON_VER);
+		struct ubx_mon_ver ver;
+
+		err = ubx_m8_msg_get(dev, &version_get,
+					UBX_FRM_SZ(version_get.payload_size),
+					(void *)&ver, sizeof(ver));
 		if (err != 0) {
-			LOG_ERR("Failed to find baudrate...");
+			LOG_ERR("Failted to get Modem Version info: %d", err);
 			return err;
 		}
 	}
+
+	const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
+						UBX_CLASS_ID_MON,
+						UBX_MSG_ID_MON_VER);
+	struct ubx_mon_ver ver;
+
+	err = ubx_m8_msg_get(dev, &version_get,
+				UBX_FRM_SZ(version_get.payload_size),
+				(void *)&ver, sizeof(ver));
+	if (err != 0) {
+		LOG_ERR("Failed to get Modem Version info: %d", err);
+		return err;
+	}
+	LOG_INF("SW Version: %s, HW Version: %s", ver.sw_ver, ver.hw_ver);
 
 	const static struct ubx_frame stop_gnss = UBX_FRAME_CFG_RST_INITIALIZER(
 							UBX_CFG_RST_HOT_START,
@@ -518,8 +536,30 @@ static DEVICE_API(gnss, gnss_api) = {};
 
 #define UBX_M8(inst)										   \
 												   \
+	BUILD_ASSERT(										   \
+		(DT_PROP(DT_INST_BUS(inst), current_speed) == 9600) ||				   \
+		(DT_PROP(DT_INST_BUS(inst), current_speed) == 19200) ||				   \
+		(DT_PROP(DT_INST_BUS(inst), current_speed) == 38400) ||				   \
+		(DT_PROP(DT_INST_BUS(inst), current_speed) == 57600) ||				   \
+		(DT_PROP(DT_INST_BUS(inst), current_speed) == 115200) ||			   \
+		(DT_PROP(DT_INST_BUS(inst), current_speed) == 230400) ||			   \
+		(DT_PROP(DT_INST_BUS(inst), current_speed) == 460800),				   \
+		"Invalid current-speed. Please set the UART current-speed to a baudrate "	   \
+		"compatible with the modem.");							   \
+												   \
+	static struct ubx_frame ubx_m8_prt_cfg_##inst = UBX_FRAME_CFG_PRT_INITIALIZER(		   \
+							UBX_CFG_PORT_ID_UART,			   \
+							DT_PROP(DT_INST_BUS(inst),		   \
+								current_speed),			   \
+							UBX_CFG_PRT_PORT_MODE_CHAR_LEN_8,	   \
+							UBX_CFG_PRT_PORT_MODE_PARITY_NONE,	   \
+							UBX_CFG_PRT_PORT_MODE_STOP_BITS_1);	   \
+												   \
 	static const struct ubx_m8_config ubx_m8_cfg_##inst = {					   \
 		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					   \
+		.initial_baudrate = DT_INST_PROP(inst, initial_baudrate),			   \
+		.desired_baudrate = DT_PROP(DT_INST_BUS(inst), current_speed),			   \
+		.ubx_port_cfg_frame = &ubx_m8_prt_cfg_##inst,					   \
 	};											   \
 												   \
 	static struct ubx_m8_data ubx_m8_data_##inst = {					   \

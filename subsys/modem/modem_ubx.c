@@ -79,20 +79,6 @@ int modem_ubx_run_script(struct modem_ubx *ubx, struct modem_ubx_script *script)
 	return (ret > 0) ? 0 : ret;
 }
 
-static inline uint16_t calc_checksum(const struct ubx_frame *frame, size_t len)
-{
-	uint8_t ck_a = 0;
-	uint8_t ck_b = 0;
-	const uint8_t *data = (const uint8_t *)frame;
-
-	for (int i = UBX_FRM_MSG_CLASS_IDX ; i < (UBX_FRM_SZ(frame->payload_size) - 2) ; i++) {
-		ck_a = ck_a + data[i];
-		ck_b = ck_b + ck_a;
-	}
-
-	return ((ck_a & 0xFF) | ((ck_b & 0xFF) << 8));
-}
-
 enum ubx_process_result {
 	UBX_PROCESS_RESULT_NO_DATA_FOUND,
 	UBX_PROCESS_RESULT_FRAME_INCOMPLETE,
@@ -136,7 +122,7 @@ static inline enum ubx_process_result process_incoming_data(const uint8_t *data,
 			}
 
 			/* We should have all the packet, so we validate checksum. */
-			uint16_t valid_checksum = calc_checksum(frame,
+			uint16_t valid_checksum = ubx_calc_checksum(frame,
 								UBX_FRM_SZ(frame->payload_size));
 			uint16_t ck_a = frame->payload_and_checksum[frame->payload_size];
 			uint16_t ck_b = frame->payload_and_checksum[frame->payload_size + 1];

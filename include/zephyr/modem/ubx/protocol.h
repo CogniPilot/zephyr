@@ -197,6 +197,7 @@ enum ubx_msg_id_ack {
 };
 
 enum ubx_msg_id_cfg {
+	UBX_MSG_ID_CFG_PRT = 0x00,
 	UBX_MSG_ID_CFG_MSG = 0x01,
 	UBX_MSG_ID_CFG_RST = 0x04,
 	UBX_MSG_ID_CFG_RATE = 0x08,
@@ -209,6 +210,64 @@ enum ubx_msg_id_mon {
 struct ubx_ack {
 	uint8_t class_id;
 	uint8_t msg_id;
+};
+
+enum ubx_cfg_port_id {
+	UBX_CFG_PORT_ID_DDC = 0,
+	UBX_CFG_PORT_ID_UART = 1,
+	UBX_CFG_PORT_ID_USB = 2,
+	UBX_CFG_PORT_ID_SPI = 3,
+};
+
+enum ubx_cfg_char_len {
+	UBX_CFG_PRT_PORT_MODE_CHAR_LEN_5 = 0, /* Not supported */
+	UBX_CFG_PRT_PORT_MODE_CHAR_LEN_6 = 1, /* Not supported */
+	UBX_CFG_PRT_PORT_MODE_CHAR_LEN_7 = 2, /* Supported only with parity */
+	UBX_CFG_PRT_PORT_MODE_CHAR_LEN_8 = 3,
+};
+
+enum ubx_cfg_parity {
+	UBX_CFG_PRT_PORT_MODE_PARITY_EVEN = 0,
+	UBX_CFG_PRT_PORT_MODE_PARITY_ODD = 1,
+	UBX_CFG_PRT_PORT_MODE_PARITY_NONE = 4,
+};
+
+enum ubx_cfg_stop_bits {
+	UBX_CFG_PRT_PORT_MODE_STOP_BITS_1 = 0,
+	UBX_CFG_PRT_PORT_MODE_STOP_BITS_1_5 = 1,
+	UBX_CFG_PRT_PORT_MODE_STOP_BITS_2 = 2,
+	UBX_CFG_PRT_PORT_MODE_STOP_BITS_0_5 = 3,
+};
+
+struct ubx_cfg_prt {
+	uint8_t port_id; /* See ubx_cfg_port_id */
+	uint8_t reserved1;
+	uint16_t rx_ready_pin;
+	struct {
+		uint32_t reserved1 : 6;
+		uint32_t char_len : 2; /* See ubx_cfg_char_len */
+		uint32_t parity : 3; /* See ubx_cfg_parity */
+		uint32_t stop_bits : 2; /* See ubx_cfg_stop_bits */
+		uint32_t reserved2 :19;
+	} __packed mode;
+	uint32_t baudrate;
+	struct {
+		uint32_t ubx : 1;
+		uint32_t nmea : 1;
+		uint32_t rtcm : 1;
+		uint32_t reserved1 : 2;
+		uint32_t rtcm3 : 1;
+		uint32_t reserved2 : 26;
+	} __packed in_proto_mask;
+	struct {
+		uint32_t ubx : 1;
+		uint32_t nmea : 1;
+		uint32_t reserved1 : 3;
+		uint32_t rtcm3 : 1;
+		uint32_t reserved2 : 26;
+	} __packed out_proto_mask;
+	uint16_t flags;
+	uint16_t reserved2;
 };
 
 enum ubx_cfg_rst_start_mode {
@@ -286,11 +345,50 @@ struct ubx_mon_ver {
 	char hw_ver[10];
 };
 
+static inline uint16_t ubx_calc_checksum(const struct ubx_frame *frame, size_t len)
+{
+	uint8_t ck_a = 0;
+	uint8_t ck_b = 0;
+	const uint8_t *data = (const uint8_t *)frame;
+
+	__ASSERT_NO_MSG(len == UBX_FRM_SZ(frame->payload_size));
+
+	for (int i = UBX_FRM_MSG_CLASS_IDX ; i < (UBX_FRM_SZ(frame->payload_size) - 2) ; i++) {
+		ck_a = ck_a + data[i];
+		ck_b = ck_b + ck_a;
+	}
+
+	return ((ck_a & 0xFF) | ((ck_b & 0xFF) << 8));
+}
+
 #define UBX_FRAME_ACK_INITIALIZER(_class_id, _msg_id)						   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_ACK, UBX_MSG_ID_ACK, _class_id, _msg_id)
 
 #define UBX_FRAME_NAK_INITIALIZER(_class_id, _msg_id)						   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_ACK, UBX_MSG_ID_NAK, _class_id, _msg_id)
+
+#define UBX_FRAME_CFG_PRT_INITIALIZER(_port_id, _baudrate, _charlen, _parity, _stopbits)	   \
+	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_PRT,			   \
+				      _port_id,							   \
+				      0,							   \
+				      0,							   \
+				      0,							   \
+				      (((_charlen << 6)|(_parity << 9)) & 0xFF),		   \
+				      ((((_parity << 9) | (_stopbits << 12)) >> 8) & 0xFF),	   \
+				      0,							   \
+				      0,							   \
+				      (_baudrate & 0xFF),					   \
+				      ((_baudrate >> 8) & 0xFF),				   \
+				      ((_baudrate >> 16) & 0xFF),				   \
+				      ((_baudrate >> 24) & 0xFF),				   \
+				      0x03,							   \
+				      0x00,							   \
+				      0x03,							   \
+				      0x00,							   \
+				      0x00,							   \
+				      0x00,							   \
+				      0x00,							   \
+				      0x00)
 
 #define UBX_FRAME_CFG_RST_INITIALIZER(_start_mode, _reset_mode)					   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RST,			   \
