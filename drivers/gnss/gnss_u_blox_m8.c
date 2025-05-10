@@ -21,9 +21,10 @@ LOG_MODULE_REGISTER(ubx_m8, CONFIG_GNSS_LOG_LEVEL);
 
 struct ubx_m8_config {
 	const struct device *bus;
+	uint16_t fix_rate_ms;
 	uint32_t initial_baudrate;
-	const struct ubx_frame *ubx_port_cfg_frame;
-	uint32_t desired_baudrate;
+	const struct ubx_frame *ubx_cfg_rate_frame;
+	const struct ubx_frame *ubx_cfg_port_frame;
 };
 
 struct ubx_m8_data {
@@ -286,8 +287,7 @@ static int ubx_m8_init(const struct device *dev)
 			return err;
 		}
 
-		// uint32_t desired_baudrate = uart_cfg.baudrate;
-		uint32_t desired_baudrate = cfg->desired_baudrate;
+		uint32_t desired_baudrate = uart_cfg.baudrate;
 		uint32_t initial_baudrate = cfg->initial_baudrate;
 
 		uart_cfg.baudrate = initial_baudrate;
@@ -297,10 +297,12 @@ static int ubx_m8_init(const struct device *dev)
 		}
 
 		/** One per instance, hence why it's instantiated from device inst macro */
-		const struct ubx_frame *prt_cfg_frame = cfg->ubx_port_cfg_frame;
+		const struct ubx_frame *prt_cfg_frame = cfg->ubx_cfg_port_frame;
 		
-		LOG_INF("PRT CFG FRAME - Size: %d, Payload size: %d, Desired speed: %d", UBX_FRM_SZ(prt_cfg_frame->payload_size), prt_cfg_frame->payload_size, desired_baudrate);
-
+		LOG_INF("PRT CFG FRAME - Size: %d, Payload size: %d, Desired speed: %d",
+			UBX_FRM_SZ(prt_cfg_frame->payload_size),
+			prt_cfg_frame->payload_size,
+			desired_baudrate);
 
 		(void)ubx_m8_msg_set(dev, prt_cfg_frame,
 				     UBX_FRM_SZ(prt_cfg_frame->payload_size), false);
@@ -311,8 +313,6 @@ static int ubx_m8_init(const struct device *dev)
 		if (err < 0) {
 			LOG_ERR("Failed to configure UART: %d", err);
 		}
-
-		// k_sleep(K_SECONDS(3));
 
 		const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
 							UBX_CLASS_ID_MON,
@@ -353,10 +353,9 @@ static int ubx_m8_init(const struct device *dev)
 	}
 	k_sleep(K_MSEC(1000));
 
-	const static struct ubx_frame fix_rate = UBX_FRAME_CFG_RATE_INITIALIZER(3000, 1,
-							UBX_CFG_RATE_TIME_REF_GPS);
+	const struct ubx_frame *fix_rate = cfg->ubx_cfg_rate_frame;
 
-	err = ubx_m8_msg_set(dev, &fix_rate, UBX_FRM_SZ(fix_rate.payload_size), true);
+	err = ubx_m8_msg_set(dev, fix_rate, UBX_FRM_SZ(fix_rate->payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to set fix-rate: %d", err);
 		return err;
@@ -547,19 +546,29 @@ static DEVICE_API(gnss, gnss_api) = {};
 		"Invalid current-speed. Please set the UART current-speed to a baudrate "	   \
 		"compatible with the modem.");							   \
 												   \
+	BUILD_ASSERT((DT_INST_PROP(inst, fix_rate) >= 50) &&					   \
+		     (DT_INST_PROP(inst, fix_rate) < 65536),					   \
+		     "Invalid fix-rate. Please set it higher than 50-ms"			   \
+		     " and must fit in 16-bits.");						   \
+												   \
+	static struct ubx_frame ubx_m8_cfg_rate_##inst = UBX_FRAME_CFG_RATE_INITIALIZER(	   \
+								DT_INST_PROP(inst, fix_rate), 1,   \
+								UBX_CFG_RATE_TIME_REF_GPS);	   \
+												   \
 	static struct ubx_frame ubx_m8_prt_cfg_##inst = UBX_FRAME_CFG_PRT_INITIALIZER(		   \
-							UBX_CFG_PORT_ID_UART,			   \
-							DT_PROP(DT_INST_BUS(inst),		   \
-								current_speed),			   \
-							UBX_CFG_PRT_PORT_MODE_CHAR_LEN_8,	   \
-							UBX_CFG_PRT_PORT_MODE_PARITY_NONE,	   \
-							UBX_CFG_PRT_PORT_MODE_STOP_BITS_1);	   \
+								UBX_CFG_PORT_ID_UART,		   \
+								DT_PROP(DT_INST_BUS(inst),	   \
+									current_speed),		   \
+								UBX_CFG_PRT_PORT_MODE_CHAR_LEN_8,  \
+								UBX_CFG_PRT_PORT_MODE_PARITY_NONE, \
+								UBX_CFG_PRT_PORT_MODE_STOP_BITS_1);\
 												   \
 	static const struct ubx_m8_config ubx_m8_cfg_##inst = {					   \
 		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					   \
 		.initial_baudrate = DT_INST_PROP(inst, initial_baudrate),			   \
-		.desired_baudrate = DT_PROP(DT_INST_BUS(inst), current_speed),			   \
-		.ubx_port_cfg_frame = &ubx_m8_prt_cfg_##inst,					   \
+		.fix_rate_ms = DT_INST_PROP(inst, fix_rate),					   \
+		.ubx_cfg_port_frame = &ubx_m8_prt_cfg_##inst,					   \
+		.ubx_cfg_rate_frame = &ubx_m8_cfg_rate_##inst,					   \
 	};											   \
 												   \
 	static struct ubx_m8_data ubx_m8_data_##inst = {					   \

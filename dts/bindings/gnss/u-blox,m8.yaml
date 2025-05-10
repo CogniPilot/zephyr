@@ -18,3 +18,10 @@ properties:
       at 9600 bps, but then switched up to 115200.
     default: 9600
     enum: [4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800]
+
+  fix-rate:
+    type: int
+    required: true
+    description: |
+      Initial fix-rate GNSS modem will be operating on. May be adjusted at
+      run-time through GNSS APIs. Must be greater than 50-ms.
