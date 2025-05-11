@@ -289,14 +289,12 @@ static int ubx_m8_init(const struct device *dev)
 			return err;
 		}
 
-		/** TODO: Lock around get/set messages to guard data integrity */
 		(void)k_sem_init(&data->script.lock, 1, 1);
 
 		data->script.inst.response.buf = data->script.response_buf;
 		data->script.inst.response.buf_len = sizeof(data->script.response_buf);
 	}
 
-	/** TODO: Implement baud-rate detection/setting. */
 	{
 		struct uart_config uart_cfg;
 
@@ -380,7 +378,6 @@ static int ubx_m8_init(const struct device *dev)
 		return err;
 	}
 
-	/** Disabling  */
 	const static struct ubx_frame disable_gga = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GGA,
