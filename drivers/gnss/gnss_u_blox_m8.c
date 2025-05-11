@@ -217,7 +217,7 @@ static int ubx_m8_msg_get(const struct device *dev, const struct ubx_frame *req,
 	return 0;
 }
 
-static int ubx_m8_msg_set(const struct device *dev, const struct ubx_frame *req,
+static int ubx_m8_msg_send(const struct device *dev, const struct ubx_frame *req,
 			  size_t len, bool wait_for_ack)
 {
 	struct ubx_m8_data *data = dev->data;
@@ -321,7 +321,7 @@ static int ubx_m8_init(const struct device *dev)
 			prt_cfg_frame->payload_size,
 			desired_baudrate);
 
-		(void)ubx_m8_msg_set(dev, prt_cfg_frame,
+		(void)ubx_m8_msg_send(dev, prt_cfg_frame,
 				     UBX_FRM_SZ(prt_cfg_frame->payload_size), false);
 
 		uart_cfg.baudrate = desired_baudrate;
@@ -363,7 +363,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CFG_RST_HOT_START,
 							UBX_CFG_RST_MODE_GNSS_STOP);
 
-	err = ubx_m8_msg_set(dev, &stop_gnss, UBX_FRM_SZ(stop_gnss.payload_size), false);
+	err = ubx_m8_msg_send(dev, &stop_gnss, UBX_FRM_SZ(stop_gnss.payload_size), false);
 	if (err != 0) {
 		LOG_ERR("Failed to stop GNSS module: %d", err);
 		return err;
@@ -372,7 +372,7 @@ static int ubx_m8_init(const struct device *dev)
 
 	const struct ubx_frame *fix_rate = cfg->ubx_cfg_rate_frame;
 
-	err = ubx_m8_msg_set(dev, fix_rate, UBX_FRM_SZ(fix_rate->payload_size), true);
+	err = ubx_m8_msg_send(dev, fix_rate, UBX_FRM_SZ(fix_rate->payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to set fix-rate: %d", err);
 		return err;
@@ -383,7 +383,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_MSG_ID_NMEA_STD_GGA,
 							0);
 
-	err = ubx_m8_msg_set(dev, &disable_gga, UBX_FRM_SZ(disable_gga.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_gga, UBX_FRM_SZ(disable_gga.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GGA message: %d", err);
 		return err;
@@ -393,7 +393,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_RMC,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_rmc, UBX_FRM_SZ(disable_rmc.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_rmc, UBX_FRM_SZ(disable_rmc.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA RMC message: %d", err);
 		return err;
@@ -403,7 +403,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GSV,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_gsv, UBX_FRM_SZ(disable_gsv.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_gsv, UBX_FRM_SZ(disable_gsv.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GSV message: %d", err);
 		return err;
@@ -413,7 +413,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_DTM,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_dtm, UBX_FRM_SZ(disable_dtm.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_dtm, UBX_FRM_SZ(disable_dtm.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA DTM message: %d", err);
 		return err;
@@ -423,7 +423,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GBS,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_gbs, UBX_FRM_SZ(disable_gbs.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_gbs, UBX_FRM_SZ(disable_gbs.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GBS message: %d", err);
 		return err;
@@ -434,7 +434,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GLL,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_gll, UBX_FRM_SZ(disable_gll.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_gll, UBX_FRM_SZ(disable_gll.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GLL message: %d", err);
 		return err;
@@ -444,7 +444,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GNS,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_gns, UBX_FRM_SZ(disable_gns.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_gns, UBX_FRM_SZ(disable_gns.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GNS message: %d", err);
 		return err;
@@ -454,7 +454,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GRS,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_grs, UBX_FRM_SZ(disable_grs.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_grs, UBX_FRM_SZ(disable_grs.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GRS message: %d", err);
 		return err;
@@ -464,7 +464,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GSA,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_gsa, UBX_FRM_SZ(disable_gsa.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_gsa, UBX_FRM_SZ(disable_gsa.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GSA message: %d", err);
 		return err;
@@ -474,7 +474,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_GST,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_gst, UBX_FRM_SZ(disable_gst.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_gst, UBX_FRM_SZ(disable_gst.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA GST message: %d", err);
 		return err;
@@ -484,7 +484,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_VLW,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_vlw, UBX_FRM_SZ(disable_vlw.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_vlw, UBX_FRM_SZ(disable_vlw.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA VLW message: %d", err);
 		return err;
@@ -494,7 +494,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_VTG,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_vtg, UBX_FRM_SZ(disable_vtg.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_vtg, UBX_FRM_SZ(disable_vtg.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA VTG message: %d", err);
 		return err;
@@ -504,7 +504,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NMEA_STD,
 							UBX_MSG_ID_NMEA_STD_ZDA,
 							0);
-	err = ubx_m8_msg_set(dev, &disable_zda, UBX_FRM_SZ(disable_zda.payload_size), true);
+	err = ubx_m8_msg_send(dev, &disable_zda, UBX_FRM_SZ(disable_zda.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to disable NMEA ZDA message: %d", err);
 		return err;
@@ -514,7 +514,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NAV,
 							UBX_MSG_ID_NAV_PVT,
 							1);
-	err = ubx_m8_msg_set(dev, &enable_nav, UBX_FRM_SZ(enable_nav.payload_size), true);
+	err = ubx_m8_msg_send(dev, &enable_nav, UBX_FRM_SZ(enable_nav.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to enable UBX NAV message: %d", err);
 		return err;
@@ -525,7 +525,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CLASS_ID_NAV,
 							UBX_MSG_ID_NAV_SAT,
 							1);
-	err = ubx_m8_msg_set(dev, &enable_sat, UBX_FRM_SZ(enable_sat.payload_size), true);
+	err = ubx_m8_msg_send(dev, &enable_sat, UBX_FRM_SZ(enable_sat.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to enable UBX SAT message: %d", err);
 		return err;
@@ -536,7 +536,7 @@ static int ubx_m8_init(const struct device *dev)
 							UBX_CFG_RST_HOT_START,
 							UBX_CFG_RST_MODE_GNSS_START);
 
-	err = ubx_m8_msg_set(dev, &start_gnss, UBX_FRM_SZ(start_gnss.payload_size), false);
+	err = ubx_m8_msg_send(dev, &start_gnss, UBX_FRM_SZ(start_gnss.payload_size), false);
 	if (err != 0) {
 		LOG_ERR("Failed to start GNSS module: %d", err);
 		return err;
