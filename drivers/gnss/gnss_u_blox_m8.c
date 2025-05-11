@@ -42,6 +42,7 @@ struct ubx_m8_data {
 	struct {
 		struct modem_ubx_script inst;
 		uint8_t response_buf[512];
+		uint8_t request_buf[256];
 		struct k_mutex lock;
 	} script;
 #if CONFIG_GNSS_SATELLITES
@@ -237,6 +238,30 @@ static int ubx_m8_msg_send(const struct device *dev, const struct ubx_frame *req
 	data->script.inst.request.len = len;
 
 	err = modem_ubx_run_script(&data->ubx.inst, &data->script.inst);
+
+	(void)k_mutex_unlock(&data->script.lock);
+
+	return err;
+}
+
+static int ubx_m8_msg_payload_send(const struct device *dev, uint8_t class, uint8_t id,
+				   const uint8_t *payload, size_t payload_size)
+{
+	struct ubx_m8_data *data = dev->data;
+	struct ubx_frame *frame = (struct ubx_frame *)data->script.request_buf;
+	int err;
+
+	err = k_mutex_lock(&data->script.lock, K_SECONDS(3));
+	if (err != 0) {
+		LOG_ERR("Failed to take script lock: %d", err);
+		return err;
+	}
+
+	err = ubx_frame_encode(class, id, payload, payload_size,
+			       (uint8_t *)frame, sizeof(data->script.request_buf));
+	if (err > 0) {
+		err = ubx_m8_msg_send(dev, frame, err, true);
+	}
 
 	(void)k_mutex_unlock(&data->script.lock);
 
@@ -545,7 +570,49 @@ static int ubx_m8_init(const struct device *dev)
 	return 0;
 }
 
-static DEVICE_API(gnss, gnss_api) = {};
+static int ubx_m8_set_fix_rate(const struct device *dev, uint32_t fix_interval_ms)
+{
+	if (fix_interval_ms < 50 || fix_interval_ms > 65535) {
+		return -EINVAL;
+	}
+
+	struct ubx_cfg_rate rate = {
+		.meas_rate_ms = (uint16_t)fix_interval_ms,
+		.nav_rate = 1,
+		.time_ref = UBX_CFG_RATE_TIME_REF_GPS,
+	};
+
+	return ubx_m8_msg_payload_send(dev, UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RATE,
+				       (const uint8_t *)&rate,
+				       sizeof(rate));
+}
+
+static int ubx_m8_get_fix_rate(const struct device *dev, uint32_t *fix_interval_ms)
+{
+	struct ubx_cfg_rate rate;
+	int err;
+
+	if (fix_interval_ms == NULL) {
+		return -EINVAL;
+	}
+
+	const static struct ubx_frame get_fix_rate = UBX_FRAME_GET_INITIALIZER(UBX_CLASS_ID_CFG,
+									       UBX_MSG_ID_CFG_RATE);
+
+	err = ubx_m8_msg_get(dev, &get_fix_rate,
+			     UBX_FRM_SZ(get_fix_rate.payload_size),
+			     (void *)&rate, sizeof(rate));
+	if (err == 0) {
+		*fix_interval_ms = rate.meas_rate_ms;
+	}
+
+	return err;
+}
+
+static DEVICE_API(gnss, gnss_api) = {
+	.get_fix_rate = ubx_m8_get_fix_rate,
+	.set_fix_rate = ubx_m8_set_fix_rate,
+};
 
 #define UBX_M8(inst)										   \
 												   \
