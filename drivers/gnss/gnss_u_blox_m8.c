@@ -508,7 +508,7 @@ static int ubx_m8_init(const struct device *dev)
 	const static struct ubx_frame enable_sat = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
 							UBX_CLASS_ID_NAV,
 							UBX_MSG_ID_NAV_SAT,
-							CONFIG_GNSS_SATELLITES);
+							1);
 	err = ubx_m8_msg_set(dev, &enable_sat, UBX_FRM_SZ(enable_sat.payload_size), true);
 	if (err != 0) {
 		LOG_ERR("Failed to enable UBX SAT message: %d", err);
