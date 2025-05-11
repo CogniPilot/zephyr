@@ -192,6 +192,12 @@ static int ubx_m8_msg_get(const struct device *dev, const struct ubx_frame *req,
 	struct ubx_frame *rsp_frame = (struct ubx_frame *)data->script.inst.response.buf;
 	int err;
 
+	err = k_sem_take(&data->script.lock, K_SECONDS(3));
+	if (err != 0) {
+		LOG_ERR("Failed to take script lock: %d", err);
+		return err;
+	}
+
 	data->script.inst.timeout = K_SECONDS(3);
 	data->script.inst.retry_count = 2;
 	data->script.inst.match.filter.class = req->class;
@@ -206,6 +212,8 @@ static int ubx_m8_msg_get(const struct device *dev, const struct ubx_frame *req,
 
 	memcpy(rsp, rsp_frame->payload_and_checksum, min_rsp_size);
 
+	k_sem_give(&data->script.lock);
+
 	return 0;
 }
 
@@ -213,6 +221,13 @@ static int ubx_m8_msg_set(const struct device *dev, const struct ubx_frame *req,
 			  size_t len, bool wait_for_ack)
 {
 	struct ubx_m8_data *data = dev->data;
+	int err;
+
+	err = k_sem_take(&data->script.lock, K_SECONDS(3));
+	if (err != 0) {
+		LOG_ERR("Failed to take script lock: %d", err);
+		return err;
+	}
 
 	data->script.inst.timeout = K_SECONDS(3);
 	data->script.inst.retry_count = wait_for_ack ? 2 : 0;
@@ -221,7 +236,11 @@ static int ubx_m8_msg_set(const struct device *dev, const struct ubx_frame *req,
 	data->script.inst.request.buf = req;
 	data->script.inst.request.len = len;
 
-	return modem_ubx_run_script(&data->ubx.inst, &data->script.inst);
+	err = modem_ubx_run_script(&data->ubx.inst, &data->script.inst);
+
+	k_sem_give(&data->script.lock);
+
+	return err;
 }
 
 static int ubx_m8_init(const struct device *dev)
@@ -525,8 +544,6 @@ static int ubx_m8_init(const struct device *dev)
 		LOG_ERR("Failed to start GNSS module: %d", err);
 		return err;
 	}
-
-	/** TODO: Add unsolicited messages to get GNSS navigation messages */
 
 	return 0;
 }
