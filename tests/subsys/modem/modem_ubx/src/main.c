@@ -544,3 +544,21 @@ ZTEST(modem_ubx, test_unsol_matches_trigger_cb)
 
 	zassert_true(atomic_test_bit(&callback_called, MODEM_UBX_UTEST_ON_NAK_RECEIVED_BIT));
 }
+
+ZTEST(modem_ubx, test_ubx_frame_encode_matches_compile_time_macro)
+{
+	static struct ubx_frame ack_frame = UBX_FRAME_ACK_INITIALIZER(0x01, 0x02);
+
+	uint8_t buf[256];
+	struct ubx_ack ack = {
+		.class = 0x01,
+		.id = 0x02,
+	};
+
+	int len = ubx_frame_encode(UBX_CLASS_ID_ACK, UBX_MSG_ID_ACK,
+				   (const uint8_t *)&ack, sizeof(ack),
+				   buf, sizeof(buf));
+	zassert_equal(len, UBX_FRM_SZ(sizeof(ack)), "Expected: %d, got: %d",
+		      UBX_FRM_SZ(sizeof(ack)), len);
+	zassert_mem_equal(buf, &ack_frame, UBX_FRM_SZ(sizeof(ack)));
+}

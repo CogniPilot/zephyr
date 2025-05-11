@@ -208,8 +208,8 @@ enum ubx_msg_id_mon {
 };
 
 struct ubx_ack {
-	uint8_t class_id;
-	uint8_t msg_id;
+	uint8_t class;
+	uint8_t id;
 };
 
 enum ubx_cfg_port_id {
@@ -351,7 +351,10 @@ static inline uint16_t ubx_calc_checksum(const struct ubx_frame *frame, size_t l
 	uint8_t ck_b = 0;
 	const uint8_t *data = (const uint8_t *)frame;
 
-	__ASSERT_NO_MSG(len == UBX_FRM_SZ(frame->payload_size));
+	/** Mismatch in expected and actual length results in an invalid frame */
+	if (len != UBX_FRM_SZ(frame->payload_size)) {
+		return 0xFFFF;
+	}
 
 	for (int i = UBX_FRM_MSG_CLASS_IDX ; i < (UBX_FRM_SZ(frame->payload_size) - 2) ; i++) {
 		ck_a = ck_a + data[i];
@@ -359,6 +362,31 @@ static inline uint16_t ubx_calc_checksum(const struct ubx_frame *frame, size_t l
 	}
 
 	return ((ck_a & 0xFF) | ((ck_b & 0xFF) << 8));
+}
+
+static inline int ubx_frame_encode(uint8_t class, uint8_t id,
+				    const uint8_t *payload, size_t payload_len,
+				    uint8_t *buf, size_t buf_len)
+{
+	if (buf_len < UBX_FRM_SZ(payload_len)) {
+		return -EINVAL;
+	}
+
+	struct ubx_frame *frame = (struct ubx_frame *)buf;
+
+	frame->preamble_sync_char_1 = UBX_PREAMBLE_SYNC_CHAR_1;
+	frame->preamble_sync_char_2 = UBX_PREAMBLE_SYNC_CHAR_2;
+	frame->class = class;
+	frame->id = id;
+	frame->payload_size = payload_len;
+	memcpy(frame->payload_and_checksum, payload, payload_len);
+
+	uint16_t checksum = ubx_calc_checksum(frame, UBX_FRM_SZ(payload_len));
+
+	frame->payload_and_checksum[payload_len] = checksum & 0xFF;
+	frame->payload_and_checksum[payload_len + 1] = (checksum >> 8) & 0xFF;
+
+	return UBX_FRM_SZ(payload_len);
 }
 
 #define UBX_FRAME_ACK_INITIALIZER(_class_id, _msg_id)						   \
