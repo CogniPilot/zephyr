@@ -22,10 +22,10 @@ LOG_MODULE_REGISTER(ubx_m8, CONFIG_GNSS_LOG_LEVEL);
 struct ubx_m8_config {
 	const struct device *bus;
 	uint16_t fix_rate_ms;
-	uint32_t initial_baudrate;
-	uint32_t desired_baudrate;
-	const struct ubx_frame *ubx_cfg_rate_frame;
-	const struct ubx_frame *ubx_cfg_port_frame;
+	struct {
+		uint32_t initial;
+		uint32_t desired;
+	} baudrate;
 };
 
 struct ubx_m8_data {
@@ -246,7 +246,7 @@ static int ubx_m8_msg_send(const struct device *dev, const struct ubx_frame *req
 }
 
 static int ubx_m8_msg_payload_send(const struct device *dev, uint8_t class, uint8_t id,
-				   const uint8_t *payload, size_t payload_size)
+				   const uint8_t *payload, size_t payload_size, bool wait_for_ack)
 {
 	struct ubx_m8_data *data = dev->data;
 	struct ubx_frame *frame = (struct ubx_frame *)data->script.request_buf;
@@ -261,7 +261,7 @@ static int ubx_m8_msg_payload_send(const struct device *dev, uint8_t class, uint
 	err = ubx_frame_encode(class, id, payload, payload_size,
 			       (uint8_t *)frame, sizeof(data->script.request_buf));
 	if (err > 0) {
-		err = ubx_m8_msg_send(dev, frame, err, true);
+		err = ubx_m8_msg_send(dev, frame, err, wait_for_ack);
 	}
 
 	(void)k_mutex_unlock(&data->script.lock);
@@ -330,8 +330,8 @@ static int ubx_m8_init(const struct device *dev)
 			return err;
 		}
 
-		uint32_t desired_baudrate = uart_cfg.baudrate;
-		uint32_t initial_baudrate = cfg->initial_baudrate;
+		uint32_t desired_baudrate = cfg->baudrate.desired;
+		uint32_t initial_baudrate = cfg->baudrate.initial;
 
 		uart_cfg.baudrate = initial_baudrate;
 		err = uart_configure(cfg->bus, &uart_cfg);
@@ -339,7 +339,6 @@ static int ubx_m8_init(const struct device *dev)
 			LOG_ERR("Failed to configure UART: %d", err);
 		}
 
-		/** One per instance, hence why it's instantiated from device inst macro */
 		struct ubx_cfg_prt port_config = {
 			.port_id = UBX_CFG_PORT_ID_UART,
 			.baudrate = desired_baudrate,
@@ -351,35 +350,13 @@ static int ubx_m8_init(const struct device *dev)
 		};
 		(void)ubx_m8_msg_payload_send(dev, UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_PRT,
 				              (const uint8_t *)&port_config,
-					      sizeof(port_config));
-		// const struct ubx_frame *prt_cfg_frame = cfg->ubx_cfg_port_frame;
-		
-		// LOG_INF("PRT CFG FRAME - Size: %d, Payload size: %d, Desired speed: %d",
-		// 	UBX_FRM_SZ(prt_cfg_frame->payload_size),
-		// 	prt_cfg_frame->payload_size,
-		// 	desired_baudrate);
-
-		// (void)ubx_m8_msg_send(dev, prt_cfg_frame,
-		// 		     UBX_FRM_SZ(prt_cfg_frame->payload_size), false);
+					      sizeof(port_config), false);
 
 		uart_cfg.baudrate = desired_baudrate;
 
 		err = uart_configure(cfg->bus, &uart_cfg);
 		if (err < 0) {
 			LOG_ERR("Failed to configure UART: %d", err);
-		}
-
-		const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
-							UBX_CLASS_ID_MON,
-							UBX_MSG_ID_MON_VER);
-		struct ubx_mon_ver ver;
-
-		err = ubx_m8_msg_get(dev, &version_get,
-					UBX_FRM_SZ(version_get.payload_size),
-					(void *)&ver, sizeof(ver));
-		if (err != 0) {
-			LOG_ERR("Failted to get Modem Version info: %d", err);
-			return err;
 		}
 	}
 
@@ -408,9 +385,7 @@ static int ubx_m8_init(const struct device *dev)
 	}
 	k_sleep(K_MSEC(1000));
 
-	const struct ubx_frame *fix_rate = cfg->ubx_cfg_rate_frame;
-
-	err = ubx_m8_msg_send(dev, fix_rate, UBX_FRM_SZ(fix_rate->payload_size), true);
+	err = gnss_set_fix_rate(dev, cfg->fix_rate_ms);
 	if (err != 0) {
 		LOG_ERR("Failed to set fix-rate: %d", err);
 		return err;
@@ -596,18 +571,14 @@ static int ubx_m8_set_fix_rate(const struct device *dev, uint32_t fix_interval_m
 	};
 
 	return ubx_m8_msg_payload_send(dev, UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RATE,
-				       (const uint8_t *)&rate,
-				       sizeof(rate));
+				       (const uint8_t *)&rate, sizeof(rate),
+				       true);
 }
 
 static int ubx_m8_get_fix_rate(const struct device *dev, uint32_t *fix_interval_ms)
 {
 	struct ubx_cfg_rate rate;
 	int err;
-
-	if (fix_interval_ms == NULL) {
-		return -EINVAL;
-	}
 
 	const static struct ubx_frame get_fix_rate = UBX_FRAME_GET_INITIALIZER(UBX_CLASS_ID_CFG,
 									       UBX_MSG_ID_CFG_RATE);
@@ -624,12 +595,70 @@ static int ubx_m8_get_fix_rate(const struct device *dev, uint32_t *fix_interval_
 
 static int ubx_m8_set_navigation_mode(const struct device *dev, enum gnss_navigation_mode mode)
 {
-	return -ENOTSUP;
+	enum ubx_dyn_model nav_model;
+
+	switch (mode) {
+	case GNSS_NAVIGATION_MODE_ZERO_DYNAMICS:
+		nav_model = UBX_DYN_MODEL_STATIONARY;
+		break;
+	case GNSS_NAVIGATION_MODE_LOW_DYNAMICS:
+		nav_model = UBX_DYN_MODEL_PEDESTRIAN;
+		break;
+	case GNSS_NAVIGATION_MODE_BALANCED_DYNAMICS:
+		nav_model = UBX_DYN_MODEL_PORTABLE;
+		break;
+	case GNSS_NAVIGATION_MODE_HIGH_DYNAMICS:
+		nav_model = UBX_DYN_MODEL_AIRBORNE_2G;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	/** The zero'd elements won't be applied as long as their apply bit is not set. */
+	struct ubx_cfg_nav5 nav_mode = {
+		.apply = {
+			.dyn = 1,
+			.fix_mode = 1,
+		},
+		.dyn_model = nav_model,
+		.fix_mode = UBX_FIX_MODE_AUTO,
+	};
+
+	return ubx_m8_msg_payload_send(dev, UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_NAV5,
+				       (const uint8_t *)&nav_mode, sizeof(nav_mode),
+				       true);
 }
 
 static int ubx_m8_get_navigation_mode(const struct device *dev, enum gnss_navigation_mode *mode)
 {
-	return -ENOTSUP;
+	struct ubx_cfg_nav5 nav_mode;
+	int err;
+
+	const static struct ubx_frame get_nav_mode = UBX_FRAME_GET_INITIALIZER(UBX_CLASS_ID_CFG,
+									       UBX_MSG_ID_CFG_NAV5);
+
+	err = ubx_m8_msg_get(dev, &get_nav_mode,
+			     UBX_FRM_SZ(get_nav_mode.payload_size),
+			     &nav_mode, sizeof(nav_mode));
+
+	switch (nav_mode.dyn_model) {
+	case UBX_DYN_MODEL_STATIONARY:
+		*mode = GNSS_NAVIGATION_MODE_ZERO_DYNAMICS;
+		break;
+	case UBX_DYN_MODEL_PEDESTRIAN:
+		*mode = GNSS_NAVIGATION_MODE_LOW_DYNAMICS;
+		break;
+	case UBX_DYN_MODEL_PORTABLE:
+		*mode = GNSS_NAVIGATION_MODE_BALANCED_DYNAMICS;
+		break;
+	case UBX_DYN_MODEL_AIRBORNE_2G:
+		*mode = GNSS_NAVIGATION_MODE_HIGH_DYNAMICS;
+		break;
+	default:
+		return -EIO;
+	}
+
+	return 0;
 }
 
 static int ubx_m8_set_enabled_systems(const struct device *dev, gnss_systems_t systems)
@@ -639,13 +668,48 @@ static int ubx_m8_set_enabled_systems(const struct device *dev, gnss_systems_t s
 
 static int ubx_m8_get_enabled_systems(const struct device *dev, gnss_systems_t *systems)
 {
-	return -ENOTSUP;
+	static const struct ubx_frame get_enabled_systems = UBX_FRAME_GET_INITIALIZER(
+									UBX_CLASS_ID_MON,
+									UBX_MSG_ID_MON_GNSS);
+	struct ubx_mon_gnss gnss_selection;
+	int err;
+
+	err = ubx_m8_msg_get(dev, &get_enabled_systems,
+			     UBX_FRM_SZ(get_enabled_systems.payload_size),
+			     (void *)&gnss_selection, sizeof(gnss_selection));
+	if (err != 0) {
+		return err;
+	}
+
+	*systems = 0;
+	*systems |= gnss_selection.enabled.gps ? GNSS_SYSTEM_GPS : 0;
+	*systems |= gnss_selection.enabled.glonass ? GNSS_SYSTEM_GLONASS : 0;
+	*systems |= gnss_selection.enabled.beidou ? GNSS_SYSTEM_BEIDOU : 0;
+	*systems |= gnss_selection.enabled.galileo ? GNSS_SYSTEM_GALILEO : 0;
+
+	return 0;
 }
 
 static int ubx_m8_get_supported_systems(const struct device *dev, gnss_systems_t *systems)
 {
-	*systems = (GNSS_SYSTEM_GPS | GNSS_SYSTEM_GLONASS | GNSS_SYSTEM_GALILEO |
-		    GNSS_SYSTEM_BEIDOU | GNSS_SYSTEM_SBAS | GNSS_SYSTEM_QZSS);
+	static const struct ubx_frame get_enabled_systems = UBX_FRAME_GET_INITIALIZER(
+									UBX_CLASS_ID_MON,
+									UBX_MSG_ID_MON_GNSS);
+	struct ubx_mon_gnss gnss_selection;
+	int err;
+
+	err = ubx_m8_msg_get(dev, &get_enabled_systems,
+			     UBX_FRM_SZ(get_enabled_systems.payload_size),
+			     (void *)&gnss_selection, sizeof(gnss_selection));
+	if (err != 0) {
+		return err;
+	}
+
+	*systems = 0;
+	*systems |= gnss_selection.supported.gps ? GNSS_SYSTEM_GPS : 0;
+	*systems |= gnss_selection.supported.glonass ? GNSS_SYSTEM_GLONASS : 0;
+	*systems |= gnss_selection.supported.beidou ? GNSS_SYSTEM_BEIDOU : 0;
+	*systems |= gnss_selection.supported.galileo ? GNSS_SYSTEM_GALILEO : 0;
 
 	return 0;
 }
@@ -678,29 +742,16 @@ static DEVICE_API(gnss, gnss_api) = {
 		     "Invalid fix-rate. Please set it higher than 50-ms"			   \
 		     " and must fit in 16-bits.");						   \
 												   \
-	static struct ubx_frame ubx_m8_cfg_rate_##inst = UBX_FRAME_CFG_RATE_INITIALIZER(	   \
-								DT_INST_PROP(inst, fix_rate), 1,   \
-								UBX_CFG_RATE_TIME_REF_GPS);	   \
-												   \
-	static struct ubx_frame ubx_m8_prt_cfg_##inst = UBX_FRAME_CFG_PRT_INITIALIZER(		   \
-								UBX_CFG_PORT_ID_UART,		   \
-								DT_PROP(DT_INST_BUS(inst),	   \
-									current_speed),		   \
-								UBX_CFG_PRT_PORT_MODE_CHAR_LEN_8,  \
-								UBX_CFG_PRT_PORT_MODE_PARITY_NONE, \
-								UBX_CFG_PRT_PORT_MODE_STOP_BITS_1);\
-												   \
 	static const struct ubx_m8_config ubx_m8_cfg_##inst = {					   \
 		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					   \
-		.initial_baudrate = DT_INST_PROP(inst, initial_baudrate),			   \
-		.desired_baudrate = DT_PROP(DT_INST_BUS(inst), current_speed),			   \
+		.baudrate = {									   \
+			.initial = DT_INST_PROP(inst, initial_baudrate),			   \
+			.desired = DT_PROP(DT_INST_BUS(inst), current_speed),			   \
+		},										   \
 		.fix_rate_ms = DT_INST_PROP(inst, fix_rate),					   \
-		.ubx_cfg_port_frame = &ubx_m8_prt_cfg_##inst,					   \
-		.ubx_cfg_rate_frame = &ubx_m8_cfg_rate_##inst,					   \
 	};											   \
 												   \
-	static struct ubx_m8_data ubx_m8_data_##inst = {					   \
-	};											   \
+	static struct ubx_m8_data ubx_m8_data_##inst;						   \
 												   \
 	DEVICE_DT_INST_DEFINE(inst,								   \
 			      ubx_m8_init,							   \

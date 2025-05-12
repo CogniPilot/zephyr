@@ -23,7 +23,7 @@
 #define UBX_FRM_PREAMBLE_SYNC_CHAR_2_IDX	1
 #define UBX_FRM_MSG_CLASS_IDX			2
 
-#define UBX_PAYLOAD_SZ_MAX			256
+#define UBX_PAYLOAD_SZ_MAX			512
 #define UBX_FRM_SZ_MAX				UBX_FRM_SZ(UBX_PAYLOAD_SZ_MAX)
 
 struct ubx_frame {
@@ -201,16 +201,35 @@ enum ubx_msg_id_cfg {
 	UBX_MSG_ID_CFG_MSG = 0x01,
 	UBX_MSG_ID_CFG_RST = 0x04,
 	UBX_MSG_ID_CFG_RATE = 0x08,
+	UBX_MSG_ID_CFG_NAV5 = 0x24,
 };
 
 enum ubx_msg_id_mon {
 	UBX_MSG_ID_MON_VER = 0x04,
+	UBX_MSG_ID_MON_GNSS = 0x28,
 };
 
 struct ubx_ack {
 	uint8_t class;
 	uint8_t id;
 };
+
+struct gnss_selection {
+	uint8_t gps : 1;
+	uint8_t glonass : 1;
+	uint8_t beidou : 1;
+	uint8_t galileo : 1;
+	uint8_t reserved : 4;
+} __packed;
+
+struct ubx_mon_gnss {
+	uint8_t ver;
+	struct gnss_selection supported;
+	struct gnss_selection default_ena;
+	struct gnss_selection enabled;
+	uint8_t simultaneous;
+	uint8_t reserved1[3];
+} __packed;
 
 enum ubx_cfg_port_id {
 	UBX_CFG_PORT_ID_DDC = 0,
@@ -257,14 +276,14 @@ struct ubx_cfg_prt {
 		uint32_t rtcm : 1;
 		uint32_t reserved1 : 2;
 		uint32_t rtcm3 : 1;
-		uint32_t reserved2 : 26;
+		uint32_t reserved2 : 10;
 	} __packed in_proto_mask;
 	struct {
 		uint32_t ubx : 1;
 		uint32_t nmea : 1;
 		uint32_t reserved1 : 3;
 		uint32_t rtcm3 : 1;
-		uint32_t reserved2 : 26;
+		uint32_t reserved2 : 10;
 	} __packed out_proto_mask;
 	uint16_t flags;
 	uint16_t reserved2;
@@ -300,14 +319,14 @@ enum ubx_utc_standard {
 struct ubx_cfg_nav5 {
 	struct {
 		uint16_t dyn : 1;
-		uint16_t minEl : 1;
-		uint16_t posFixMode : 1;
-		uint16_t drLim : 1;
-		uint16_t posMask : 1;
-		uint16_t timeMask : 1;
-		uint16_t staticHoldMask : 1;
-		uint16_t dgpsMask : 1;
-		uint16_t cnoThreshold : 1;
+		uint16_t min_elev : 1;
+		uint16_t fix_mode : 1;
+		uint16_t dr_lim : 1;
+		uint16_t pos_mask : 1;
+		uint16_t time_mask : 1;
+		uint16_t static_hold_thresh : 1;
+		uint16_t dgps_mask : 1;
+		uint16_t cno_threshold : 1;
 		uint16_t reserved : 1;
 		uint16_t utc : 1;
 		uint16_t reserved2 : 5;
@@ -325,12 +344,12 @@ struct ubx_cfg_nav5 {
 	uint8_t static_hold_thresh; /* Static hold threshold. cm/s */
 	uint8_t dgnss_timeout; /* DGNSS timeout. Seconds */
 	uint8_t cno_thresh_num_svs; /* Number of satellites required above cno_thresh */
-	uint16_t cno_thresh; /* C/N0 threshold for GNSS signals. dbHz */
+	uint8_t cno_thresh; /* C/N0 threshold for GNSS signals. dbHz */
 	uint8_t reserved1[2];
 	uint16_t static_hold_max_dist; /* Static hold distance threshold. Meters */
 	uint8_t utc_standard; /* UTC standard to be used. See ubx_utc_standard */
 	uint8_t reserved2[5];
-};
+} __packed;
 
 enum ubx_cfg_rst_start_mode {
 	UBX_CFG_RST_HOT_START = 0x0000,
@@ -456,29 +475,6 @@ static inline int ubx_frame_encode(uint8_t class, uint8_t id,
 
 #define UBX_FRAME_NAK_INITIALIZER(_class_id, _msg_id)						   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_ACK, UBX_MSG_ID_NAK, _class_id, _msg_id)
-
-#define UBX_FRAME_CFG_PRT_INITIALIZER(_port_id, _baudrate, _charlen, _parity, _stopbits)	   \
-	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_PRT,			   \
-				      _port_id,							   \
-				      0,							   \
-				      0,							   \
-				      0,							   \
-				      (((_charlen << 6)|(_parity << 9)) & 0xFF),		   \
-				      ((((_parity << 9) | (_stopbits << 12)) >> 8) & 0xFF),	   \
-				      0,							   \
-				      0,							   \
-				      (_baudrate & 0xFF),					   \
-				      ((_baudrate >> 8) & 0xFF),				   \
-				      ((_baudrate >> 16) & 0xFF),				   \
-				      ((_baudrate >> 24) & 0xFF),				   \
-				      0x03,							   \
-				      0x00,							   \
-				      0x03,							   \
-				      0x00,							   \
-				      0x00,							   \
-				      0x00,							   \
-				      0x00,							   \
-				      0x00)
 
 #define UBX_FRAME_CFG_RST_INITIALIZER(_start_mode, _reset_mode)					   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RST,			   \
