@@ -270,6 +270,68 @@ struct ubx_cfg_prt {
 	uint16_t reserved2;
 };
 
+enum ubx_dyn_model {
+	UBX_DYN_MODEL_PORTABLE = 0,
+	UBX_DYN_MODEL_STATIONARY = 2,
+	UBX_DYN_MODEL_PEDESTRIAN = 3,
+	UBX_DYN_MODEL_AUTOMOTIVE = 4,
+	UBX_DYN_MODEL_SEA = 5,
+	UBX_DYN_MODEL_AIRBORNE_1G = 6,
+	UBX_DYN_MODEL_AIRBORNE_2G = 7,
+	UBX_DYN_MODEL_AIRBORNE_4G = 8,
+	UBX_DYN_MODEL_WRIST = 9,
+	UBX_DYN_MODEL_BIKE = 10,
+};
+
+enum ubx_fix_mode {
+	UBX_FIX_MODE_2D_ONLY = 1,
+	UBX_FIX_MODE_3D_ONLY = 2,
+	UBX_FIX_MODE_AUTO = 3,
+};
+
+enum ubx_utc_standard {
+	UBX_UTC_STANDARD_AUTOMATIC = 0,
+	UBX_UTC_STANDARD_GPS = 3,
+	UBX_UTC_STANDARD_GALILEO = 5,
+	UBX_UTC_STANDARD_GLONASS = 6,
+	UBX_UTC_STANDARD_BEIDOU = 7,
+};
+
+struct ubx_cfg_nav5 {
+	struct {
+		uint16_t dyn : 1;
+		uint16_t minEl : 1;
+		uint16_t posFixMode : 1;
+		uint16_t drLim : 1;
+		uint16_t posMask : 1;
+		uint16_t timeMask : 1;
+		uint16_t staticHoldMask : 1;
+		uint16_t dgpsMask : 1;
+		uint16_t cnoThreshold : 1;
+		uint16_t reserved : 1;
+		uint16_t utc : 1;
+		uint16_t reserved2 : 5;
+	} __packed apply;
+	uint8_t dyn_model; /* Dynamic platform model. See ubx_dyn_model */
+	uint8_t fix_mode; /* Position fixing mode. See ubx_fix_mode */
+	int32_t fixed_alt; /* Fixed altitude for 2D fix mode. Meters */
+	uint32_t fixed_alt_var; /* Variance for Fixed altitude in 2D mode. Sq. meters */
+	int8_t min_elev; /* Minimum Elevation to use a GNSS satellite in Navigation. Degrees */
+	uint8_t dr_limit; /* Reserved */
+	uint16_t p_dop; /* Position DOP mask */
+	uint16_t t_dop; /* Time DOP mask */
+	uint16_t p_acc; /* Position accuracy mask. Meters */
+	uint16_t t_acc; /* Time accuracy mask. Meters */
+	uint8_t static_hold_thresh; /* Static hold threshold. cm/s */
+	uint8_t dgnss_timeout; /* DGNSS timeout. Seconds */
+	uint8_t cno_thresh_num_svs; /* Number of satellites required above cno_thresh */
+	uint16_t cno_thresh; /* C/N0 threshold for GNSS signals. dbHz */
+	uint8_t reserved1[2];
+	uint16_t static_hold_max_dist; /* Static hold distance threshold. Meters */
+	uint8_t utc_standard; /* UTC standard to be used. See ubx_utc_standard */
+	uint8_t reserved2[5];
+};
+
 enum ubx_cfg_rst_start_mode {
 	UBX_CFG_RST_HOT_START = 0x0000,
 	UBX_CFG_RST_WARM_START = 0x0001,
