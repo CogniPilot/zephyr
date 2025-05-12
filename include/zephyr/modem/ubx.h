@@ -147,6 +147,9 @@ int modem_ubx_init(struct modem_ubx *ubx, const struct modem_ubx_config *config)
  */
 int modem_ubx_run_script(struct modem_ubx *ubx, struct modem_ubx_script *script);
 
+int modem_ubx_run_script_for_each(struct modem_ubx *ubx, struct modem_ubx_script *script,
+				  struct ubx_frame *array, size_t array_size);
+
 /**
  * @}
  */

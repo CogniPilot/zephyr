@@ -470,6 +470,12 @@ static inline int ubx_frame_encode(uint8_t class, uint8_t id,
 	return UBX_FRM_SZ(payload_len);
 }
 
+#define UBX_FRAME_ARRAY_DEFINE(_name, ...)
+
+#define _UBX_FRAME_ARRAY_DEFINE(_name, ...)
+
+#define _UBX_FRAME_ARRAY_DEFINE_I(_name) 0
+
 #define UBX_FRAME_ACK_INITIALIZER(_class_id, _msg_id)						   \
 	UBX_FRAME_INITIALIZER_PAYLOAD(UBX_CLASS_ID_ACK, UBX_MSG_ID_ACK, _class_id, _msg_id)
 
