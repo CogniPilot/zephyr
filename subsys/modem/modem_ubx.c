@@ -43,30 +43,6 @@ int modem_ubx_run_script(struct modem_ubx *ubx, struct modem_ubx_script *script)
 		ret = modem_pipe_transmit(ubx->pipe,
 					  (const uint8_t *)ubx->script->request.buf,
 					  ubx->script->request.len);
-		CHECKIF(ret == -EPERM) {
-			/** This recovery logic was included as a result of
-			 * modem_backend_uart_async closing the pipe unilaterally
-			 * due to UART_ERROR_FRAMING. modem_ubx thinks it owns the
-			 * pipe and it's attached when it's not the case. This has
-			 * been observed mostly when the MCU is booting while the
-			 * GNSS module is transmitting periodic data.
-			 */
-			int err;
-
-			LOG_ERR("Failed to transmit data. Attempting to re-open pipe");
-
-			err = modem_pipe_open(ubx->pipe, K_MSEC(1));
-			if (err != 0) {
-				LOG_ERR("Failed to recover closed-pipe: %d", err);
-				ret = err;
-				break;
-			}
-
-			(void)modem_pipe_attach(ubx->pipe, modem_ubx_pipe_callback, ubx);
-			LOG_INF("Pipe re-attached. Retrying...");
-
-			continue;
-		}
 
 		if (wait_for_rsp) {
 			ret = k_sem_take(&ubx->script_stopped_sem, K_MSEC(ms_per_attempt));

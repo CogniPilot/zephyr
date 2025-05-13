@@ -81,8 +81,6 @@ UBX_FRAME_DEFINE(enable_nav,
 	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_PVT, 1));
 UBX_FRAME_DEFINE(enable_sat,
 	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_SAT, 1));
-UBX_FRAME_DEFINE(start_gnss,
-	UBX_FRAME_CFG_RST_INITIALIZER(UBX_CFG_RST_HOT_START, UBX_CFG_RST_MODE_GNSS_START));
 
 UBX_FRAME_ARRAY_DEFINE(u_blox_m8_init_seq,
 	&disable_gga, &disable_rmc, &disable_gsv, &disable_dtm, &disable_gbs,
@@ -91,7 +89,7 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_m8_init_seq,
 #if CONFIG_GNSS_SATELLITES
 	&enable_sat,
 #endif
-	&start_gnss);
+);
 
 static void on_pvt_data(struct modem_ubx *ubx, const struct ubx_frame *frame, size_t len,
 			void *user_data)
@@ -359,6 +357,28 @@ static inline int init_modem(const struct device *dev)
 	return err;
 }
 
+static inline int reattach_modem(const struct device *dev)
+{
+	int err;
+	struct ubx_m8_data *data = dev->data;
+
+	(void)modem_ubx_release(&data->ubx.inst);
+	(void)modem_pipe_close(data->backend.pipe, K_SECONDS(1));
+
+	err = modem_pipe_open(data->backend.pipe, K_SECONDS(1));
+	if (err != 0) {
+		LOG_ERR("Failed to re-open modem pipe: %d", err);
+		return err;
+	}
+
+	err = modem_ubx_attach(&data->ubx.inst, data->backend.pipe);
+	if (err != 0) {
+		LOG_ERR("Failed to re-attach modem pipe to UBX inst: %d", err);
+	}
+
+	return 0;
+}
+
 static inline int configure_baudrate(const struct device *dev)
 {
 	int err = 0;
@@ -431,6 +451,12 @@ static int ubx_m8_init(const struct device *dev)
 		return err;
 	}
 
+	err = reattach_modem(dev);
+	if (err < 0) {
+		LOG_ERR("Failed to re-attach modem: %d", err);
+		return err;
+	}
+
 	const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
 						UBX_CLASS_ID_MON,
 						UBX_MSG_ID_MON_VER);
@@ -471,6 +497,16 @@ static int ubx_m8_init(const struct device *dev)
 			LOG_ERR("Failed to send init sequence - idx: %d, result: %d", i, err);
 			return err;
 		}
+	}
+
+	const static struct ubx_frame start_gnss = UBX_FRAME_CFG_RST_INITIALIZER(
+							UBX_CFG_RST_HOT_START,
+							UBX_CFG_RST_MODE_GNSS_START);
+
+	err = ubx_m8_msg_send(dev, &start_gnss, UBX_FRM_SZ(start_gnss.payload_size), false);
+	if (err != 0) {
+		LOG_ERR("Failed to start GNSS module: %d", err);
+		return err;
 	}
 
 	return 0;
