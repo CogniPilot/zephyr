@@ -219,6 +219,48 @@ static int ubx_m8_msg_get(const struct device *dev, const struct ubx_frame *req,
 	return 0;
 }
 
+UBX_FRAME_DEFINE(disable_gga,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GGA, 0));
+UBX_FRAME_DEFINE(disable_rmc,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_RMC, 0));
+UBX_FRAME_DEFINE(disable_gsv,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GSV, 0));
+UBX_FRAME_DEFINE(disable_dtm,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_DTM, 0));
+UBX_FRAME_DEFINE(disable_gbs,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GBS, 0));
+UBX_FRAME_DEFINE(disable_gll,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GLL, 0));
+UBX_FRAME_DEFINE(disable_gns,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GNS, 0));
+UBX_FRAME_DEFINE(disable_grs,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GRS, 0));
+UBX_FRAME_DEFINE(disable_gsa,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GSA, 0));
+UBX_FRAME_DEFINE(disable_gst,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_GST, 0));
+UBX_FRAME_DEFINE(disable_vlw,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_VLW, 0));
+UBX_FRAME_DEFINE(disable_vtg,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_VTG, 0));
+UBX_FRAME_DEFINE(disable_zda,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NMEA_STD, UBX_MSG_ID_NMEA_STD_ZDA, 0));
+UBX_FRAME_DEFINE(enable_nav,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_PVT, 1));
+UBX_FRAME_DEFINE(enable_sat,
+	UBX_FRAME_CFG_MSG_RATE_INITIALIZER(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_SAT, 1));
+UBX_FRAME_DEFINE(start_gnss,
+	UBX_FRAME_CFG_RST_INITIALIZER(UBX_CFG_RST_HOT_START, UBX_CFG_RST_MODE_GNSS_START));
+
+UBX_FRAME_ARRAY_DEFINE(u_blox_m8_init_seq,
+	&disable_gga, &disable_rmc, &disable_gsv, &disable_dtm, &disable_gbs,
+	&disable_gll, &disable_gns, &disable_grs, &disable_gsa, &disable_gst,
+	&disable_vlw, &disable_vtg, &disable_zda, &enable_nav,
+#if CONFIG_GNSS_SATELLITES
+	&enable_sat,
+#endif
+	&start_gnss);
+
 static int ubx_m8_msg_send(const struct device *dev, const struct ubx_frame *req,
 			  size_t len, bool wait_for_ack)
 {
@@ -269,6 +311,99 @@ static int ubx_m8_msg_payload_send(const struct device *dev, uint8_t class, uint
 	return err;
 }
 
+static inline int init_modem(const struct device *dev)
+{
+	int err;
+	struct ubx_m8_data *data = dev->data;
+	const struct ubx_m8_config *cfg = dev->config;
+
+	const struct modem_ubx_config ubx_config = {
+		.user_data = data,
+		.receive_buf = data->ubx.receive_buf,
+		.receive_buf_size = sizeof(data->ubx.receive_buf),
+		.unsol_matches = {
+			.array = u_blox_m8_unsol_messages,
+			.size = ARRAY_SIZE(u_blox_m8_unsol_messages),
+		},
+	};
+
+	(void)modem_ubx_init(&data->ubx.inst, &ubx_config);
+
+	const struct modem_backend_uart_config uart_backend_config = {
+		.uart = cfg->bus,
+		.receive_buf = data->backend.receive_buf,
+		.receive_buf_size = sizeof(data->backend.receive_buf),
+		.transmit_buf = data->backend.transmit_buf,
+		.transmit_buf_size = sizeof(data->backend.transmit_buf),
+	};
+
+	data->backend.pipe = modem_backend_uart_init(&data->backend.uart_backend,
+						     &uart_backend_config);
+	err = modem_pipe_open(data->backend.pipe, K_SECONDS(1));
+	if (err != 0) {
+		LOG_ERR("Failed to open Modem pipe: %d", err);
+		return err;
+	}
+
+	err = modem_ubx_attach(&data->ubx.inst, data->backend.pipe);
+	if (err != 0) {
+		LOG_ERR("Failed to attach UBX inst to modem pipe: %d", err);
+		return err;
+	}
+
+	(void)k_mutex_init(&data->script.lock);
+
+	data->script.inst.response.buf = data->script.response_buf;
+	data->script.inst.response.buf_len = sizeof(data->script.response_buf);
+
+	return err;
+}
+
+static inline int configure_baudrate(const struct device *dev)
+{
+	int err = 0;
+	struct ubx_m8_data *data = dev->data;
+	const struct ubx_m8_config *cfg = dev->config;
+	struct uart_config uart_cfg;
+
+	err = uart_config_get(cfg->bus, &uart_cfg);
+	if (err < 0) {
+		LOG_ERR("Failed to get UART config: %d", err);
+		return err;
+	}
+
+	uint32_t desired_baudrate = cfg->baudrate.desired;
+	uint32_t initial_baudrate = cfg->baudrate.initial;
+
+	uart_cfg.baudrate = initial_baudrate;
+	err = uart_configure(cfg->bus, &uart_cfg);
+	if (err < 0) {
+		LOG_ERR("Failed to configure UART: %d", err);
+	}
+
+	struct ubx_cfg_prt port_config = {
+		.port_id = UBX_CFG_PORT_ID_UART,
+		.baudrate = desired_baudrate,
+		.mode = {
+			.char_len = UBX_CFG_PRT_PORT_MODE_CHAR_LEN_8,
+			.parity = UBX_CFG_PRT_PORT_MODE_PARITY_NONE,
+			.stop_bits = UBX_CFG_PRT_PORT_MODE_STOP_BITS_1,
+		},
+	};
+	(void)ubx_m8_msg_payload_send(dev, UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_PRT,
+				      (const uint8_t *)&port_config,
+				      sizeof(port_config), false);
+
+	uart_cfg.baudrate = desired_baudrate;
+
+	err = uart_configure(cfg->bus, &uart_cfg);
+	if (err < 0) {
+		LOG_ERR("Failed to configure UART: %d", err);
+	}
+
+	return err;
+}
+
 static int ubx_m8_init(const struct device *dev)
 {
 	int err = 0;
@@ -280,84 +415,15 @@ static int ubx_m8_init(const struct device *dev)
 	 */
 	data->dev = dev;
 
-	{
-		const struct modem_ubx_config ubx_config = {
-			.user_data = data,
-			.receive_buf = data->ubx.receive_buf,
-			.receive_buf_size = sizeof(data->ubx.receive_buf),
-			.unsol_matches = {
-				.array = u_blox_m8_unsol_messages,
-				.size = ARRAY_SIZE(u_blox_m8_unsol_messages),
-			},
-		};
-
-		(void)modem_ubx_init(&data->ubx.inst, &ubx_config);
-
-		const struct modem_backend_uart_config uart_backend_config = {
-			.uart = cfg->bus,
-			.receive_buf = data->backend.receive_buf,
-			.receive_buf_size = sizeof(data->backend.receive_buf),
-			.transmit_buf = data->backend.transmit_buf,
-			.transmit_buf_size = sizeof(data->backend.transmit_buf),
-		};
-
-		data->backend.pipe = modem_backend_uart_init(&data->backend.uart_backend,
-							     &uart_backend_config);
-		err = modem_pipe_open(data->backend.pipe, K_SECONDS(1));
-		if (err != 0) {
-			LOG_ERR("Failed to open Modem pipe: %d", err);
-			return err;
-		}
-
-		err = modem_ubx_attach(&data->ubx.inst, data->backend.pipe);
-		if (err != 0) {
-			LOG_ERR("Failed to attach UBX inst to modem pipe: %d", err);
-			return err;
-		}
-
-		(void)k_mutex_init(&data->script.lock);
-
-		data->script.inst.response.buf = data->script.response_buf;
-		data->script.inst.response.buf_len = sizeof(data->script.response_buf);
+	err = init_modem(dev);
+	if (err < 0) {
+		LOG_ERR("Failed to initialize modem: %d", err);
 	}
 
-	{
-		struct uart_config uart_cfg;
-
-		err = uart_config_get(cfg->bus, &uart_cfg);
-		if (err < 0) {
-			LOG_ERR("Failed to get UART config: %d", err);
-			return err;
-		}
-
-		uint32_t desired_baudrate = cfg->baudrate.desired;
-		uint32_t initial_baudrate = cfg->baudrate.initial;
-
-		uart_cfg.baudrate = initial_baudrate;
-		err = uart_configure(cfg->bus, &uart_cfg);
-		if (err < 0) {
-			LOG_ERR("Failed to configure UART: %d", err);
-		}
-
-		struct ubx_cfg_prt port_config = {
-			.port_id = UBX_CFG_PORT_ID_UART,
-			.baudrate = desired_baudrate,
-			.mode = {
-				.char_len = UBX_CFG_PRT_PORT_MODE_CHAR_LEN_8,
-				.parity = UBX_CFG_PRT_PORT_MODE_PARITY_NONE,
-				.stop_bits = UBX_CFG_PRT_PORT_MODE_STOP_BITS_1,
-			},
-		};
-		(void)ubx_m8_msg_payload_send(dev, UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_PRT,
-				              (const uint8_t *)&port_config,
-					      sizeof(port_config), false);
-
-		uart_cfg.baudrate = desired_baudrate;
-
-		err = uart_configure(cfg->bus, &uart_cfg);
-		if (err < 0) {
-			LOG_ERR("Failed to configure UART: %d", err);
-		}
+	err = configure_baudrate(dev);
+	if (err < 0) {
+		LOG_ERR("Failed to configure baud-rate: %d", err);
+		return err;
 	}
 
 	const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
@@ -391,168 +457,15 @@ static int ubx_m8_init(const struct device *dev)
 		return err;
 	}
 
-	const static struct ubx_frame disable_gga = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GGA,
-							0);
-
-	err = ubx_m8_msg_send(dev, &disable_gga, UBX_FRM_SZ(disable_gga.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GGA message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_rmc = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_RMC,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_rmc, UBX_FRM_SZ(disable_rmc.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA RMC message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_gsv = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GSV,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_gsv, UBX_FRM_SZ(disable_gsv.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GSV message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_dtm = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_DTM,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_dtm, UBX_FRM_SZ(disable_dtm.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA DTM message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_gbs = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GBS,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_gbs, UBX_FRM_SZ(disable_gbs.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GBS message: %d", err);
-		return err;
-	}
-
-	/** Disable the following messages: DTM GBS GLL GNS GRS gSA GST VLW VTG ZDA */
-	const static struct ubx_frame disable_gll = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GLL,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_gll, UBX_FRM_SZ(disable_gll.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GLL message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_gns = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GNS,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_gns, UBX_FRM_SZ(disable_gns.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GNS message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_grs = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GRS,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_grs, UBX_FRM_SZ(disable_grs.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GRS message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_gsa = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GSA,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_gsa, UBX_FRM_SZ(disable_gsa.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GSA message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_gst = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_GST,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_gst, UBX_FRM_SZ(disable_gst.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA GST message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_vlw = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_VLW,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_vlw, UBX_FRM_SZ(disable_vlw.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA VLW message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_vtg = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_VTG,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_vtg, UBX_FRM_SZ(disable_vtg.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA VTG message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame disable_zda = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NMEA_STD,
-							UBX_MSG_ID_NMEA_STD_ZDA,
-							0);
-	err = ubx_m8_msg_send(dev, &disable_zda, UBX_FRM_SZ(disable_zda.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to disable NMEA ZDA message: %d", err);
-		return err;
-	}
-
-	const static struct ubx_frame enable_nav = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NAV,
-							UBX_MSG_ID_NAV_PVT,
-							1);
-	err = ubx_m8_msg_send(dev, &enable_nav, UBX_FRM_SZ(enable_nav.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to enable UBX NAV message: %d", err);
-		return err;
-	}
-
-#if CONFIG_GNSS_SATELLITES
-	const static struct ubx_frame enable_sat = UBX_FRAME_CFG_MSG_RATE_INITIALIZER(
-							UBX_CLASS_ID_NAV,
-							UBX_MSG_ID_NAV_SAT,
-							1);
-	err = ubx_m8_msg_send(dev, &enable_sat, UBX_FRM_SZ(enable_sat.payload_size), true);
-	if (err != 0) {
-		LOG_ERR("Failed to enable UBX SAT message: %d", err);
-		return err;
-	}
-#endif
-
-	const static struct ubx_frame start_gnss = UBX_FRAME_CFG_RST_INITIALIZER(
-							UBX_CFG_RST_HOT_START,
-							UBX_CFG_RST_MODE_GNSS_START);
-
-	err = ubx_m8_msg_send(dev, &start_gnss, UBX_FRM_SZ(start_gnss.payload_size), false);
-	if (err != 0) {
-		LOG_ERR("Failed to start GNSS module: %d", err);
-		return err;
+	for (size_t i = 0 ; i < ARRAY_SIZE(u_blox_m8_init_seq) ; i++) {
+		err = ubx_m8_msg_send(dev,
+				      u_blox_m8_init_seq[i],
+				      UBX_FRM_SZ(u_blox_m8_init_seq[i]->payload_size),
+				      true);
+		if (err < 0) {
+			LOG_ERR("Failed to send init sequence - idx: %d, result: %d", i, err);
+			return err;
+		}
 	}
 
 	return 0;
