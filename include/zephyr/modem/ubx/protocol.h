@@ -265,9 +265,10 @@ struct ubx_cfg_prt {
 	struct {
 		uint32_t reserved1 : 6;
 		uint32_t char_len : 2; /* See ubx_cfg_char_len */
+		uint32_t reserved2 : 1;
 		uint32_t parity : 3; /* See ubx_cfg_parity */
 		uint32_t stop_bits : 2; /* See ubx_cfg_stop_bits */
-		uint32_t reserved2 :19;
+		uint32_t reserved3 :18;
 	} __packed mode;
 	uint32_t baudrate;
 	struct {

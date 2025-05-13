@@ -388,10 +388,16 @@ static inline int configure_baudrate(const struct device *dev)
 			.parity = UBX_CFG_PRT_PORT_MODE_PARITY_NONE,
 			.stop_bits = UBX_CFG_PRT_PORT_MODE_STOP_BITS_1,
 		},
+		.in_proto_mask = {
+			.ubx = 1,
+		},
+		.out_proto_mask = {
+			.ubx = 1,
+		},
 	};
 	(void)ubx_m8_msg_payload_send(dev, UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_PRT,
 				      (const uint8_t *)&port_config,
-				      sizeof(port_config), false);
+				      sizeof(port_config), true);
 
 	uart_cfg.baudrate = desired_baudrate;
 
