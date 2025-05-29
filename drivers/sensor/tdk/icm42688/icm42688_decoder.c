@@ -249,7 +249,7 @@ static int icm42688_read_imu_from_packet(const uint8_t *pkt, bool is_accel, int 
 {
 	uint32_t unsigned_value;
 	int32_t signed_value;
-	bool is_hires = FIELD_GET(FIFO_HEADER_ACCEL, pkt[0]) == 1;
+	bool is_hires = FIELD_GET(FIFO_HEADER_20, pkt[0]) == 1;
 	int offset = 1 + (axis_offset * 2);
 
 	const uint32_t scale[2][2] = {
@@ -269,6 +269,19 @@ static int icm42688_read_imu_from_packet(const uint8_t *pkt, bool is_accel, int 
 		offset = 17 + axis_offset;
 		unsigned_value = (unsigned_value << 4) | FIELD_GET(mask, pkt[offset]);
 		signed_value = unsigned_value | (0 - (unsigned_value & BIT(19)));
+
+		/*
+		 * By default, INTF_CONFIG0 is set to 0x30 and thus FIFO_HOLD_LAST_DATA_EN is set to
+		 * 0. For 20-bit FIFO packets, -524288 indicates invalid data.
+		 *
+		 * At the time of writing, INTF_CONFIG0 is not configured explicitly.
+		 *
+		 * TODO: Enable/disable this check based on FIFO_HOLD_LAST_DATA_EN if INTF_CONFIG0
+		 * is configured explicitly.
+		 */
+		if (signed_value == -524288) {
+			return -ENODATA;
+		}
 	} else {
 		signed_value = unsigned_value | (0 - (unsigned_value & BIT(16)));
 	}
@@ -281,7 +294,7 @@ static uint32_t accel_period_ns[] = {
 	[ICM42688_DT_ACCEL_ODR_1_5625] = UINT32_C(10000000000000) / 15625,
 	[ICM42688_DT_ACCEL_ODR_3_125] = UINT32_C(10000000000000) / 31250,
 	[ICM42688_DT_ACCEL_ODR_6_25] = UINT32_C(10000000000000) / 62500,
-	[ICM42688_DT_ACCEL_ODR_12_5] = UINT32_C(10000000000000) / 12500,
+	[ICM42688_DT_ACCEL_ODR_12_5] = UINT32_C(10000000000000) / 125000,
 	[ICM42688_DT_ACCEL_ODR_25] = UINT32_C(1000000000) / 25,
 	[ICM42688_DT_ACCEL_ODR_50] = UINT32_C(1000000000) / 50,
 	[ICM42688_DT_ACCEL_ODR_100] = UINT32_C(1000000000) / 100,
@@ -296,7 +309,7 @@ static uint32_t accel_period_ns[] = {
 };
 
 static uint32_t gyro_period_ns[] = {
-	[ICM42688_DT_GYRO_ODR_12_5] = UINT32_C(10000000000000) / 12500,
+	[ICM42688_DT_GYRO_ODR_12_5] = UINT32_C(10000000000000) / 125000,
 	[ICM42688_DT_GYRO_ODR_25] = UINT32_C(1000000000) / 25,
 	[ICM42688_DT_GYRO_ODR_50] = UINT32_C(1000000000) / 50,
 	[ICM42688_DT_GYRO_ODR_100] = UINT32_C(1000000000) / 100,
@@ -310,7 +323,29 @@ static uint32_t gyro_period_ns[] = {
 	[ICM42688_DT_GYRO_ODR_32000] = UINT32_C(1000000) / 32,
 };
 
-static int icm42688_fifo_decode(struct icm42688_cfg *cfg, const uint8_t *buffer, struct sensor_chan_spec chan_spec,
+static int icm42688_calc_timestamp_delta(int rtc_freq, int chan_type, int dt_odr, int frame_count,
+					 uint64_t *out_delta)
+{
+	uint32_t period;
+
+	if (IS_ACCEL(chan_type)) {
+		period = accel_period_ns[dt_odr];
+	} else if (IS_GYRO(chan_type)) {
+		period = gyro_period_ns[dt_odr];
+	} else {
+		return -EINVAL;
+	}
+
+	/*
+	 * When ODR is set to r and an external clock with frequency f is used,
+	 * the actual ODR = f * r / 32000.
+	 */
+	*out_delta = (uint64_t)period * frame_count * 32000 / rtc_freq;
+
+	return 0;
+}
+
+static int icm42688_fifo_decode(const uint8_t *buffer, struct sensor_chan_spec chan_spec,
 				uint32_t *fit, uint16_t max_count, void *data_out)
 {
 	const struct icm42688_fifo_data *edata = (const struct icm42688_fifo_data *)buffer;
@@ -354,28 +389,66 @@ static int icm42688_fifo_decode(struct icm42688_cfg *cfg, const uint8_t *buffer,
 		}
 		if (chan_spec.chan_type == SENSOR_CHAN_DIE_TEMP) {
 			struct sensor_q31_data *data = (struct sensor_q31_data *)data_out;
+			uint64_t ts_delta;
+
+			if (has_accel) {
+				rc = icm42688_calc_timestamp_delta(
+					edata->rtc_freq, SENSOR_CHAN_ACCEL_XYZ, edata->accel_odr,
+					accel_frame_count - 1, &ts_delta);
+			} else {
+				rc = icm42688_calc_timestamp_delta(
+					edata->rtc_freq, SENSOR_CHAN_GYRO_XYZ, edata->gyro_odr,
+					gyro_frame_count - 1, &ts_delta);
+			}
+			if (rc < 0) {
+				buffer = frame_end;
+				continue;
+			}
+
+			/*
+			 * TODO: For some extreme combination of ODR and FIFO count, using uint32_t
+			 * to store timestamp delta will overflow. Better error reporting?
+			 */
+			if (ts_delta > UINT32_MAX) {
+				LOG_ERR("Timestamp delta overflow");
+				buffer = frame_end;
+				continue;
+			}
+
+			data->readings[count].timestamp_delta = ts_delta;
 
 			data->shift = 9;
-			if (has_accel) {
-				data->readings[count].timestamp_delta =
-					accel_period_ns[edata->accel_odr] * (accel_frame_count - 1);
-			} else {
-				data->readings[count].timestamp_delta =
-					gyro_period_ns[edata->gyro_odr] * (gyro_frame_count - 1);
-			}
 			data->readings[count].temperature =
 				icm42688_read_temperature_from_packet(buffer);
 		} else if (IS_ACCEL(chan_spec.chan_type) && has_accel) {
 			/* Decode accel */
 			struct sensor_three_axis_data *data =
 				(struct sensor_three_axis_data *)data_out;
-			uint64_t period_ns = accel_period_ns[edata->accel_odr];
+			uint64_t ts_delta;
 
 			icm42688_get_shift(SENSOR_CHAN_ACCEL_XYZ, edata->header.accel_fs,
 					   edata->header.gyro_fs, &data->shift);
 
-			data->readings[count].timestamp_delta = (accel_frame_count - 1) * period_ns;
+			rc = icm42688_calc_timestamp_delta(edata->rtc_freq, SENSOR_CHAN_ACCEL_XYZ,
+							   edata->accel_odr, accel_frame_count - 1,
+							   &ts_delta);
+			if (rc < 0) {
+				buffer = frame_end;
+				continue;
+			}
 
+			/*
+			 * TODO: For some extreme combination of ODR and FIFO count, using uint32_t
+			 * to store timestamp delta will overflow. Better error reporting?
+			 */
+			if (ts_delta > UINT32_MAX) {
+				LOG_ERR("Timestamp delta overflow");
+				buffer = frame_end;
+				continue;
+			}
+
+			data->readings[count].timestamp_delta = ts_delta;
+			
 			q31_t reading[3];
 			for (int i=0;i<3;i++) {
 				rc = icm42688_read_imu_from_packet(
@@ -395,12 +468,30 @@ static int icm42688_fifo_decode(struct icm42688_cfg *cfg, const uint8_t *buffer,
 			/* Decode gyro */
 			struct sensor_three_axis_data *data =
 				(struct sensor_three_axis_data *)data_out;
-			uint64_t period_ns = gyro_period_ns[edata->gyro_odr];
+			uint64_t ts_delta;
 
 			icm42688_get_shift(SENSOR_CHAN_GYRO_XYZ, edata->header.accel_fs,
 					   edata->header.gyro_fs, &data->shift);
 
-			data->readings[count].timestamp_delta = (gyro_frame_count - 1) * period_ns;
+			rc = icm42688_calc_timestamp_delta(edata->rtc_freq, SENSOR_CHAN_GYRO_XYZ,
+							   edata->gyro_odr, gyro_frame_count - 1,
+							   &ts_delta);
+			if (rc < 0) {
+				buffer = frame_end;
+				continue;
+			}
+
+			/*
+			 * TODO: For some extreme combination of ODR and FIFO count, using uint32_t
+			 * to store timestamp delta will overflow. Better error reporting?
+			 */
+			if (ts_delta > UINT32_MAX) {
+				LOG_ERR("Timestamp delta overflow");
+				buffer = frame_end;
+				continue;
+			}
+
+			data->readings[count].timestamp_delta = ts_delta;
 
 			q31_t reading[3];
 			for (int i=0;i<3;i++) {
@@ -448,74 +539,11 @@ static int icm42688_one_shot_decode(const uint8_t *buffer, struct sensor_chan_sp
 	case SENSOR_CHAN_ACCEL_X:
 	case SENSOR_CHAN_ACCEL_Y:
 	case SENSOR_CHAN_ACCEL_Z:
-	case SENSOR_CHAN_ACCEL_XYZ: {
-		channel_request = icm42688_encode_channel(SENSOR_CHAN_ACCEL_XYZ);
-		if ((channel_request & edata->channels) != channel_request) {
-			return -ENODATA;
-		}
-
-		struct sensor_three_axis_data *out = data_out;
-
-		out->header.base_timestamp_ns = edata->header.timestamp;
-		out->header.reading_count = 1;
-		rc = icm42688_get_shift(SENSOR_CHAN_ACCEL_XYZ, header->accel_fs, header->gyro_fs,
-					&out->shift);
-		if (rc != 0) {
-			return -EINVAL;
-		}
-
-		icm42688_convert_raw_to_q31(
-			&cfg, SENSOR_CHAN_ACCEL_X,
-			edata->readings[icm42688_get_channel_position(SENSOR_CHAN_ACCEL_X)],
-			&out->readings[0].x);
-		icm42688_convert_raw_to_q31(
-			&cfg, SENSOR_CHAN_ACCEL_Y,
-			edata->readings[icm42688_get_channel_position(SENSOR_CHAN_ACCEL_Y)],
-			&out->readings[0].y);
-		icm42688_convert_raw_to_q31(
-			&cfg, SENSOR_CHAN_ACCEL_Z,
-			edata->readings[icm42688_get_channel_position(SENSOR_CHAN_ACCEL_Z)],
-			&out->readings[0].z);
-		*fit = 1;
-		return 1;
-	}
 	case SENSOR_CHAN_GYRO_X:
 	case SENSOR_CHAN_GYRO_Y:
 	case SENSOR_CHAN_GYRO_Z:
-	case SENSOR_CHAN_GYRO_XYZ: {
-		channel_request = icm42688_encode_channel(SENSOR_CHAN_GYRO_XYZ);
-		if ((channel_request & edata->channels) != channel_request) {
-			return -ENODATA;
-		}
-
-		struct sensor_three_axis_data *out = data_out;
-
-		out->header.base_timestamp_ns = edata->header.timestamp;
-		out->header.reading_count = 1;
-		rc = icm42688_get_shift(SENSOR_CHAN_GYRO_XYZ, header->accel_fs, header->gyro_fs,
-					&out->shift);
-		if (rc != 0) {
-			return -EINVAL;
-		}
-
-		out->readings[0].timestamp_delta = 0;
-		icm42688_convert_raw_to_q31(
-			&cfg, SENSOR_CHAN_GYRO_X,
-			edata->readings[icm42688_get_channel_position(SENSOR_CHAN_GYRO_X)],
-			&out->readings[0].x);
-		icm42688_convert_raw_to_q31(
-			&cfg, SENSOR_CHAN_GYRO_Y,
-			edata->readings[icm42688_get_channel_position(SENSOR_CHAN_GYRO_Y)],
-			&out->readings[0].y);
-		icm42688_convert_raw_to_q31(
-			&cfg, SENSOR_CHAN_GYRO_Z,
-			edata->readings[icm42688_get_channel_position(SENSOR_CHAN_GYRO_Z)],
-			&out->readings[0].z);
-		*fit = 1;
-		return 1;
-	}
 	case SENSOR_CHAN_DIE_TEMP: {
-		channel_request = icm42688_encode_channel(SENSOR_CHAN_DIE_TEMP);
+		channel_request = icm42688_encode_channel(chan_spec.chan_type);
 		if ((channel_request & edata->channels) != channel_request) {
 			return -ENODATA;
 		}
@@ -525,16 +553,48 @@ static int icm42688_one_shot_decode(const uint8_t *buffer, struct sensor_chan_sp
 		out->header.base_timestamp_ns = edata->header.timestamp;
 		out->header.reading_count = 1;
 
-		rc = icm42688_get_shift(SENSOR_CHAN_DIE_TEMP, header->accel_fs, header->gyro_fs,
+		rc = icm42688_get_shift(chan_spec.chan_type, header->accel_fs, header->gyro_fs,
 					&out->shift);
 		if (rc != 0) {
 			return -EINVAL;
 		}
-		out->readings[0].timestamp_delta = 0;
+
 		icm42688_convert_raw_to_q31(
-			&cfg, SENSOR_CHAN_DIE_TEMP,
-			edata->readings[icm42688_get_channel_position(SENSOR_CHAN_DIE_TEMP)],
-			&out->readings[0].temperature);
+			&cfg, chan_spec.chan_type,
+			edata->readings[icm42688_get_channel_position(chan_spec.chan_type)],
+			&out->readings[0].value);
+		*fit = 1;
+		return 1;
+	}
+	case SENSOR_CHAN_ACCEL_XYZ:
+	case SENSOR_CHAN_GYRO_XYZ: {
+		channel_request = icm42688_encode_channel(chan_spec.chan_type);
+		if ((channel_request & edata->channels) != channel_request) {
+			return -ENODATA;
+		}
+
+		struct sensor_three_axis_data *out = data_out;
+
+		out->header.base_timestamp_ns = edata->header.timestamp;
+		out->header.reading_count = 1;
+		rc = icm42688_get_shift(chan_spec.chan_type, header->accel_fs, header->gyro_fs,
+					&out->shift);
+		if (rc != 0) {
+			return -EINVAL;
+		}
+
+		icm42688_convert_raw_to_q31(
+			&cfg, chan_spec.chan_type - 3,
+			edata->readings[icm42688_get_channel_position(chan_spec.chan_type - 3)],
+			&out->readings[0].x);
+		icm42688_convert_raw_to_q31(
+			&cfg, chan_spec.chan_type - 2,
+			edata->readings[icm42688_get_channel_position(chan_spec.chan_type - 2)],
+			&out->readings[0].y);
+		icm42688_convert_raw_to_q31(
+			&cfg, chan_spec.chan_type - 1,
+			edata->readings[icm42688_get_channel_position(chan_spec.chan_type - 1)],
+			&out->readings[0].z);
 		*fit = 1;
 		return 1;
 	}
@@ -560,10 +620,19 @@ static int icm42688_decoder_get_frame_count(const uint8_t *buffer,
 					    uint16_t *frame_count)
 {
 	const struct icm42688_fifo_data *data = (const struct icm42688_fifo_data *)buffer;
+	const struct icm42688_encoded_data *enc_data = (const struct icm42688_encoded_data *)buffer;
 	const struct icm42688_decoder_header *header = &data->header;
 
 	if (chan_spec.chan_idx != 0) {
 		return -ENOTSUP;
+	}
+
+	uint8_t channel_request = icm42688_encode_channel(chan_spec.chan_type);
+
+
+	if ((!enc_data->header.is_fifo) &&
+	    (enc_data->channels & channel_request) != channel_request) {
+		return -ENODATA;
 	}
 
 	if (!header->is_fifo) {
@@ -620,17 +689,17 @@ static int icm42688_decoder_get_size_info(struct sensor_chan_spec chan_spec, siz
 					  size_t *frame_size)
 {
 	switch (chan_spec.chan_type) {
-	case SENSOR_CHAN_ACCEL_X:
-	case SENSOR_CHAN_ACCEL_Y:
-	case SENSOR_CHAN_ACCEL_Z:
 	case SENSOR_CHAN_ACCEL_XYZ:
-	case SENSOR_CHAN_GYRO_X:
-	case SENSOR_CHAN_GYRO_Y:
-	case SENSOR_CHAN_GYRO_Z:
 	case SENSOR_CHAN_GYRO_XYZ:
 		*base_size = sizeof(struct sensor_three_axis_data);
 		*frame_size = sizeof(struct sensor_three_axis_sample_data);
 		return 0;
+	case SENSOR_CHAN_ACCEL_X:
+	case SENSOR_CHAN_ACCEL_Y:
+	case SENSOR_CHAN_ACCEL_Z:
+	case SENSOR_CHAN_GYRO_X:
+	case SENSOR_CHAN_GYRO_Y:
+	case SENSOR_CHAN_GYRO_Z:
 	case SENSOR_CHAN_DIE_TEMP:
 		*base_size = sizeof(struct sensor_q31_data);
 		*frame_size = sizeof(struct sensor_q31_sample_data);

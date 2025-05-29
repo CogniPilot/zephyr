@@ -94,7 +94,6 @@
 #define ICM42688_DT_GYRO_ODR_500		15
 /** @} */
 
-
 /** @} */
 
 #endif /*ZEPHYR_INCLUDE_DT_BINDINGS_TDK_ICM42688P_H_ */

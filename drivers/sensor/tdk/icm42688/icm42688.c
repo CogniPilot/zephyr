@@ -9,6 +9,7 @@
 #define DT_DRV_COMPAT invensense_icm42688
 
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor/icm42688.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/sys/byteorder.h>
 
@@ -21,7 +22,6 @@
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ICM42688, CONFIG_SENSOR_LOG_LEVEL);
-
 
 static void icm42688_convert_accel(struct sensor_value *val, int16_t raw_val,
 				   struct icm42688_cfg *cfg)
@@ -163,6 +163,29 @@ static int icm42688_attr_set(const struct device *dev, enum sensor_channel chan,
 				return -EINVAL;
 			}
 			new_config.batch_ticks = val->val1;
+		} else if ((enum sensor_attribute_icm42688)attr ==
+			   SENSOR_ATTR_ICM42688_PIN9_FUNCTION) {
+			if (val->val1 != ICM42688_PIN9_FUNCTION_INT2 &&
+			    val->val1 != ICM42688_PIN9_FUNCTION_FSYNC &&
+			    val->val1 != ICM42688_PIN9_FUNCTION_CLKIN) {
+				LOG_ERR("Unknown pin function");
+				return -EINVAL;
+			}
+
+			if (val->val2 < 31000 || val->val2 > 50000) {
+				LOG_ERR("RTC frequency must be between 31kHz and 50kHz");
+				return -EINVAL;
+			}
+
+			/* TODO: Allow this if FSYNC is configurable later. */
+			if (val->val1 == ICM42688_PIN9_FUNCTION_FSYNC) {
+				LOG_ERR("FSYNC is disabled, PIN9_FUNCTION should not be set to "
+					"FSYNC");
+				return -ENOTSUP;
+			}
+
+			new_config.pin9_function = val->val1;
+			new_config.rtc_freq = val->val2;
 		} else {
 			LOG_ERR("Unsupported attribute");
 			res = -EINVAL;
@@ -220,6 +243,10 @@ static int icm42688_attr_get(const struct device *dev, enum sensor_channel chan,
 		if (attr == SENSOR_ATTR_BATCH_DURATION) {
 			val->val1 = cfg->batch_ticks;
 			val->val2 = 0;
+		} else if ((enum sensor_attribute_icm42688)attr ==
+			   SENSOR_ATTR_ICM42688_PIN9_FUNCTION) {
+			val->val1 = cfg->pin9_function;
+			val->val2 = cfg->rtc_freq;
 		} else {
 			LOG_ERR("Unsupported attribute");
 			res = -EINVAL;
@@ -300,27 +327,29 @@ void icm42688_unlock(const struct device *dev)
 	SPI_DT_IODEV_DEFINE(icm42688_spi_iodev_##inst, DT_DRV_INST(inst), ICM42688_SPI_CFG, 0U);   \
 	RTIO_DEFINE(icm42688_rtio_##inst, 8, 4);
 
-#define ICM42688_DT_CONFIG_INIT(inst)								\
-	{																\
+#define ICM42688_DT_CONFIG_INIT(inst)						\
+	{									\
 		.accel_pwr_mode = DT_INST_PROP(inst, accel_pwr_mode),		\
-		.accel_fs = DT_INST_PROP(inst, accel_fs),					\
-		.accel_odr = DT_INST_PROP(inst, accel_odr),					\
-		.gyro_pwr_mode = DT_INST_PROP(inst, gyro_pwr_mode),			\
-		.gyro_fs = DT_INST_PROP(inst, gyro_fs),						\
-		.gyro_odr = DT_INST_PROP(inst, gyro_odr),					\
-		.temp_dis = false,											\
-		.fifo_en = IS_ENABLED(CONFIG_ICM42688_STREAM),				\
-		.batch_ticks = 0,											\
-		.fifo_hires = DT_INST_PROP(inst, fifo_hires),				\
-		.interrupt1_drdy = false,									\
-		.interrupt1_fifo_ths = false,								\
-		.interrupt1_fifo_full = false,								\
+		.accel_fs = DT_INST_PROP(inst, accel_fs),			\
+		.accel_odr = DT_INST_PROP(inst, accel_odr),			\
+		.gyro_pwr_mode = DT_INST_PROP(inst, gyro_pwr_mode),		\
+		.gyro_fs = DT_INST_PROP(inst, gyro_fs),				\
+		.gyro_odr = DT_INST_PROP(inst, gyro_odr),			\
+		.temp_dis = false,						\
+		.fifo_en = IS_ENABLED(CONFIG_ICM42688_STREAM),			\
+		.batch_ticks = 0,						\
+		.fifo_hires = DT_INST_PROP(inst, fifo_hires),			\
+		.interrupt1_drdy = false,					\
+		.interrupt1_fifo_ths = false,					\
+		.interrupt1_fifo_full = false,					\
+		.pin9_function = ICM42688_PIN9_FUNCTION_INT2,			\
+		.rtc_freq = 32000,						\
 		.axis_align[0].index = DT_INST_PROP(inst, axis_align_x),	\
 		.axis_align[1].index = DT_INST_PROP(inst, axis_align_y),	\
 		.axis_align[2].index = DT_INST_PROP(inst, axis_align_z),	\
-		.axis_align[0].sign = DT_INST_PROP(inst, axis_align_x_sign)-1,\
-		.axis_align[1].sign = DT_INST_PROP(inst, axis_align_y_sign)-1,\
-		.axis_align[2].sign = DT_INST_PROP(inst, axis_align_z_sign)-1 \
+		.axis_align[0].sign = DT_INST_PROP(inst, axis_align_x_sign)-1,	\
+		.axis_align[1].sign = DT_INST_PROP(inst, axis_align_y_sign)-1,	\
+		.axis_align[2].sign = DT_INST_PROP(inst, axis_align_z_sign)-1 	\
 	}
 
 #define ICM42688_DEFINE_DATA(inst)                                                                 \

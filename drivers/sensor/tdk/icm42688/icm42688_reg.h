@@ -463,6 +463,30 @@
 /* Bank1 GYRO_CONFIG_STATIC10 See section 5.x of DS-000347 */
 #define MASK_GYRO_NF_BW_SEL GENMASK(6, 4)
 
+/* Bank1 TMSTVAL0 See section 5.x of DS-000347 */
+#define MASK_TMST_VALUE_7_0 GENMASK(7, 0)
+
+/* Bank1 TMSTVAL1 See section 5.x of DS-000347 */
+#define MASK_TMST_VALUE_15_8 GENMASK(7, 0)
+
+/* Bank1 TMSTVAL2 See section 5.x of DS-000347 */
+#define MASK_TMST_VALUE_19_16 GENMASK(3, 0)
+
+/* Bank1 INTF_CONFIG4 See section 5.x of DS-000347 */
+#define BIT_I3C_BUS_MODE BIT(6)
+#define BIT_SPI_AP_4WIRE BIT(1)
+
+/* Bank1 INTF_CONFIG5 See section 5.x of DS-000347 */
+#define MASK_PIN9_FUNCTION GENMASK(2, 1)
+
+/* Bank1 INTF_CONFIG6 See section 5.x of DS-000347 */
+#define BIT_ASYNCTIME0_DIS  BIT(7)
+#define BIT_I3C_EN	    BIT(4)
+#define BIT_I3C_IBI_BYTE_EN BIT(3)
+#define BIT_I3C_IBI_EN	    BIT(2)
+#define BIT_I3C_DDR_EN	    BIT(1)
+#define BIT_I3C_SDR_EN	    BIT(0)
+
 /* Bank2 ACCEL_CONFIG_STATIC2 See section 5.x of DS-000347 */
 #define MASK_ACCEL_AAF_DELT GENMASK(6, 1)
 #define BIT_ACCEL_AAF_DIS   BIT(0)
