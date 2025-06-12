@@ -91,11 +91,6 @@
 	status = "okay";
 	pinctrl-0 = <&lpi2c8_default>;
 	pinctrl-names = "default";
-
-	ist8310: ist8310@e {
-		compatible = "isentek,ist8310";
-		reg = <0xe>;
-	};
 };
 
 &lpuart3 {
