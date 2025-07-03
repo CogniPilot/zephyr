@@ -1,0 +1,175 @@
+/*
+ * Copyright 2025 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "mr_mcxn_t1-pinctrl.dtsi"
+#include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/gpio/dvp-20pin-connector.h>
+#include <zephyr/dt-bindings/sensor/icm45686.h>
+#include <zephyr/dt-bindings/led/led.h>
+
+/ {
+	can_phy0: can-phy0 {
+		compatible = "nxp,tja1462", "can-transceiver-gpio";
+		standby-gpios = <&gpio4 14 GPIO_ACTIVE_LOW>;
+		max-bitrate = <5000000>;
+		#phy-cells = <0>;
+	};
+
+	can_phy1: can-phy1 {
+		compatible = "nxp,tja1462", "can-transceiver-gpio";
+		standby-gpios = <&gpio4 17 GPIO_ACTIVE_LOW>;
+		max-bitrate = <5000000>;
+		#phy-cells = <0>;
+	};
+};
+
+&flexcomm1_lpuart1 {
+	current-speed = <115200>;
+	pinctrl-0 = <&pinmux_flexcomm1_lpuart>;
+	pinctrl-names = "default";
+};
+
+&flexcomm8_lpspi8 {
+	pinctrl-0 = <&pinmux_flexcomm8_lpspi>;
+	pinctrl-names = "default";
+    pcs-sck-delay = <50>;
+    sck-pcs-delay = <50>;
+    transfer-delay = <50>;
+
+	cs-gpios = <&gpio3 17 GPIO_ACTIVE_LOW>;
+
+	icm45686: icm45686@0 {
+        compatible = "invensense,icm45686";
+        reg = <0>;
+        spi-max-frequency = <20000000>;
+        int-gpios = <&gpio3 22 GPIO_ACTIVE_HIGH>;
+ 
+        accel-pwr-mode = <ICM45686_DT_ACCEL_LN>;
+        accel-fs = <ICM45686_DT_ACCEL_FS_2>;
+        accel-odr = <ICM45686_DT_ACCEL_ODR_400>;
+        accel-lpf = <ICM45686_DT_ACCEL_LPF_BW_1_32>;
+        gyro-pwr-mode = <ICM45686_DT_GYRO_LN>;
+        gyro-fs = <ICM45686_DT_GYRO_FS_4000>;
+        gyro-odr = <ICM45686_DT_GYRO_ODR_400>;
+        gyro-lpf = <ICM45686_DT_GYRO_LPF_BW_1_32>;
+ 
+        fifo-watermark = <1>;
+    };
+};
+
+/*
+ * MCXN947 board uses OS timer as the kernel timer
+ * In case we need to switch to SYSTICK timer, then
+ * replace &os_timer with &systick
+ */
+&os_timer {
+	status = "disabled";
+};
+
+&systick {
+	status = "okay";
+};
+
+&sram {
+	sramg: memory@20050000 {
+		compatible = "mmio-sram";
+		reg = <0x20050000 DT_SIZE_K(64)>;
+	};
+	sramh: memory@20060000 {
+		compatible = "mmio-sram";
+		reg = <0x20060000 DT_SIZE_K(32)>;
+	};
+};
+
+&flash {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/*
+		 * Partition sizes must be aligned
+		 * to the flash memory sector size of 8KB.
+		 */
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x00000000 DT_SIZE_K(80)>;
+		};
+		slot0_partition: partition@14000 {
+			label = "image-0";
+			reg = <0x00014000 DT_SIZE_K(984)>;
+		};
+		slot1_partition: partition@10A000 {
+			label = "image-1";
+			reg = <0x0010A000 DT_SIZE_K(984)>;
+		};
+		/* storage_partition is placed in WINBOND flash memory*/
+	};
+};
+
+&enet {
+	pinctrl-0 = <&pinmux_enet_qos>;
+	pinctrl-names = "default";
+};
+
+&enet_mac {
+	phy-connection-type = "rmii";
+	zephyr,random-mac-address;
+	phy-handle = <&phy>;
+};
+
+&enet_mdio {
+	phy: ethernet-phy@12 {
+		compatible = "nxp,tja1103";
+		status = "okay";
+		reg = <0x12>;
+		int-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
+		master-slave = "slave";
+	};
+};
+
+&i3c0 {
+	pinctrl-0 = <&pinmux_i3c0>;
+	pinctrl-names = "default";
+};
+
+&flexcan0 {
+	pinctrl-0 = <&pinmux_flexcan0>;
+	pinctrl-names = "default";
+	phys = <&can_phy0>;
+};
+
+&flexcan1 {
+	pinctrl-0 = <&pinmux_flexcan1>;
+	pinctrl-names = "default";
+	phys = <&can_phy1>;
+};
+
+&flexio0 {
+	flexio_spi0: flexio_spi0 {
+		compatible = "nxp,flexio-spi";
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		sdo-pin = <0>;
+		sdi-pin = <0>;
+		sck-pin = <1>;
+		pinctrl-0 = <&pinmux_flexio_spi0>;
+		pinctrl-names = "default";
+		
+		led_strip: apa102@0 {
+			compatible = "apa,apa102";
+			reg = <0>;
+			spi-max-frequency = <8000000>;
+			chain-length = <1>;
+			color-mapping = <LED_COLOR_ID_BLUE
+				 	LED_COLOR_ID_GREEN
+				 	LED_COLOR_ID_RED>;
+		};
+	};
+
+};
