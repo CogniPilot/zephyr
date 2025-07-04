@@ -141,7 +141,7 @@ zephyr_udc0: &usb1 {
 };
 
 &i3c0 {
-	status = "disabled";
+	status = "disabled"; /* Locks-up on startup with busy wait */
 };
 
 &rtc {
