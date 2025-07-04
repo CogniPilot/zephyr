@@ -182,6 +182,12 @@ void board_early_init_hook(void)
 	CLOCK_AttachClk(kFRO_HF_DIV_to_FLEXCOMM7);
 #endif
 
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcomm8))
+	/* Configure input clock to be able to reach the datasheet specified SPI band rate. */
+	CLOCK_SetClkDiv(kCLOCK_DivFlexcom8Clk, 1u);
+	CLOCK_AttachClk(kFRO_HF_DIV_to_FLEXCOMM8);
+#endif
+
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(os_timer))
 	CLOCK_AttachClk(kCLK_1M_to_OSTIMER);
 #endif
@@ -378,6 +384,20 @@ void board_early_init_hook(void)
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexio0))
 	CLOCK_SetClkDiv(kCLOCK_DivFlexioClk, 1u);
 	CLOCK_AttachClk(kPLL0_to_FLEXIO);
+#endif
+
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(i3c0), okay)
+	/* Enable 1MHz clock. */
+	SYSCON->CLOCK_CTRL |= SYSCON_CLOCK_CTRL_FRO1MHZ_CLK_ENA_MASK;
+
+	CLOCK_SetClkDiv(kCLOCK_DivI3c0FClk, DT_PROP(DT_NODELABEL(i3c0), clk_divider));
+	CLOCK_SetClkDiv(kCLOCK_DivI3c0FClkS, DT_PROP(DT_NODELABEL(i3c0), clk_divider_slow));
+	CLOCK_SetClkDiv(kCLOCK_DivI3c0FClkStc, DT_PROP(DT_NODELABEL(i3c0), clk_divider_tc));
+
+	/* Attach PLL0 clock to I3C, 150MHz / 6 = 25MHz. */
+	CLOCK_AttachClk(kPLL0_to_I3C0FCLK);
+	CLOCK_AttachClk(kCLK_1M_to_I3C0FCLKS);
+	CLOCK_AttachClk(kI3C0FCLK_to_I3C0FCLKSTC);
 #endif
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(i3c1), okay)
