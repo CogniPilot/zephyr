@@ -7,7 +7,6 @@
 #include "mr_mcxn_t1-pinctrl.dtsi"
 #include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
-#include <zephyr/dt-bindings/gpio/dvp-20pin-connector.h>
 #include <zephyr/dt-bindings/sensor/icm45686.h>
 #include <zephyr/dt-bindings/led/led.h>
 
@@ -135,6 +134,17 @@
 &i3c0 {
 	pinctrl-0 = <&pinmux_i3c0>;
 	pinctrl-names = "default";
+	i2c-scl-hz = <400000>;
+
+	bmp581: bmp581@470000000000000050  {
+		compatible = "bosch,bmp581";
+		reg = <0x47 0x0 0x50>;
+	};
+
+	bmm350: bmm350@140000000000000050  {
+		compatible = "bosch,bmm350";
+		reg = <0x14 0x0 0x50>;
+	};
 };
 
 &flexcan0 {
