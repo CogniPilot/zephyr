@@ -13,14 +13,14 @@
 / {
 	can_phy0: can-phy0 {
 		compatible = "nxp,tja1462", "can-transceiver-gpio";
-		standby-gpios = <&gpio4 14 GPIO_ACTIVE_LOW>;
+		standby-gpios = <&gpio4 14 GPIO_ACTIVE_HIGH>;
 		max-bitrate = <5000000>;
 		#phy-cells = <0>;
 	};
 
 	can_phy1: can-phy1 {
 		compatible = "nxp,tja1462", "can-transceiver-gpio";
-		standby-gpios = <&gpio4 17 GPIO_ACTIVE_LOW>;
+		standby-gpios = <&gpio4 17 GPIO_ACTIVE_HIGH>;
 		max-bitrate = <5000000>;
 		#phy-cells = <0>;
 	};
