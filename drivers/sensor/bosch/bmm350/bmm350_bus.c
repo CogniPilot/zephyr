@@ -12,6 +12,12 @@ static int bmm350_bus_check_rtio(const struct bmm350_bus *bus)
 {
 	if (bus->rtio.type == BMM350_BUS_TYPE_I2C) {
 		return i2c_is_ready_iodev(bus->rtio.iodev) ? 0 : -ENODEV;
+	} else if (bus->rtio.type == BMM350_BUS_TYPE_I3C) {
+		/** There seems to be missing the I3C version of is_ready_iodev.
+		 * For now rely on the initial I3C transfers to confirm proper
+		 * initialization.
+		 */
+		return 0;
 	}
 
 	return -EIO;
@@ -36,6 +42,8 @@ static int bmm350_prep_reg_read_rtio_async(const struct bmm350_bus *bus,
 	rtio_sqe_prep_read(read_buf_sqe, iodev, RTIO_PRIO_NORM, buf, size, NULL);
 	if (bus->rtio.type == BMM350_BUS_TYPE_I2C) {
 		read_buf_sqe->iodev_flags |= RTIO_IODEV_I2C_STOP | RTIO_IODEV_I2C_RESTART;
+	} else if (bus->rtio.type == BMM350_BUS_TYPE_I3C) {
+		read_buf_sqe->iodev_flags |= RTIO_IODEV_I3C_STOP | RTIO_IODEV_I3C_RESTART;
 	}
 
 	/** Send back last SQE so it can be concatenated later. */
@@ -65,6 +73,8 @@ static int bmm350_prep_reg_write_rtio_async(const struct bmm350_bus *bus,
 	rtio_sqe_prep_tiny_write(write_buf_sqe, iodev, RTIO_PRIO_NORM, &val, 1, NULL);
 	if (bus->rtio.type == BMM350_BUS_TYPE_I2C) {
 		write_buf_sqe->iodev_flags |= RTIO_IODEV_I2C_STOP;
+	} else if (bus->rtio.type == BMM350_BUS_TYPE_I3C) {
+		write_buf_sqe->iodev_flags |= RTIO_IODEV_I3C_STOP;
 	}
 
 	/** Send back last SQE so it can be concatenated later. */

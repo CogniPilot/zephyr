@@ -866,12 +866,17 @@ static int bmm350_init_chip(const struct device *dev)
 		LOG_ERR("invalid chip id 0x%x", chip_id[2]);
 		goto err_poweroff;
 	}
-	/* Soft-reset */
-	soft_reset = BMM350_CMD_SOFTRESET;
 
-	/* Set the command in the command register */
-	ret = bmm350_reg_write(dev, BMM350_REG_CMD, soft_reset);
-	k_usleep(BMM350_SOFT_RESET_DELAY);
+	/** Skip reset in I3C as the initialization and bus discovery has been performed. */
+	if (config->bus.rtio.type != BMM350_BUS_TYPE_I3C) {
+		/* Soft-reset */
+		soft_reset = BMM350_CMD_SOFTRESET;
+
+		/* Set the command in the command register */
+		ret = bmm350_reg_write(dev, BMM350_REG_CMD, soft_reset);
+		k_usleep(BMM350_SOFT_RESET_DELAY);
+	}
+
 	/* Read chip ID (can only be read in sleep mode)*/
 	if (bmm350_reg_read(dev, BMM350_REG_CHIP_ID, &chip_id[0], sizeof(chip_id)) < 0) {
 		LOG_ERR("failed reading chip id");
@@ -1004,14 +1009,18 @@ static int bmm350_init(const struct device *dev)
 #define BMM350_DEFINE(inst)                                                                        \
                                                                                                    \
 	RTIO_DEFINE(bmm350_rtio_ctx_##inst, 8, 8);                                                 \
-	I2C_DT_IODEV_DEFINE(bmm350_bus_##inst, DT_DRV_INST(inst));                                 \
+	COND_CODE_1(DT_INST_ON_BUS(inst, i3c),                                                     \
+		   (I3C_DT_IODEV_DEFINE(bmm350_bus_##inst, DT_DRV_INST(inst))),                    \
+		   (I2C_DT_IODEV_DEFINE(bmm350_bus_##inst, DT_DRV_INST(inst))));                   \
                                                                                                    \
 	static struct bmm350_data bmm350_data_##inst;                                              \
 	static const struct bmm350_config bmm350_config_##inst = {                                 \
 		.bus.rtio = {                                                                      \
 			.ctx = &bmm350_rtio_ctx_##inst,                                            \
 			.iodev = &bmm350_bus_##inst,                                               \
-			.type = BMM350_BUS_TYPE_I2C,                                               \
+			COND_CODE_1(DT_INST_ON_BUS(inst, i3c),                                     \
+				    (.type = BMM350_BUS_TYPE_I3C,),                                \
+				    (.type = BMM350_BUS_TYPE_I2C,))                                \
 		},										   \
 		.bus_io = &bmm350_bus_rtio,                                                        \
 		.default_odr = DT_INST_ENUM_IDX(inst, odr) + BMM350_DATA_RATE_400HZ,               \

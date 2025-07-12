@@ -15,6 +15,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/i3c.h>
 #include <zephyr/rtio/rtio.h>
 
 #define DT_DRV_COMPAT bosch_bmm350
@@ -23,6 +24,7 @@
 
 enum bmm350_bus_type {
 	BMM350_BUS_TYPE_I2C,
+	BMM350_BUS_TYPE_I3C,
 };
 
 struct bmm350_bus {
