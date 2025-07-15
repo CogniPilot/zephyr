@@ -18,9 +18,7 @@ description: |
         power-mode = <BMP581_DT_MODE_NORMAL>;
     };
 
-compatible: "bosch,bmp581"
-
-include: [sensor-device.yaml, i2c-device.yaml]
+include: [sensor-device.yaml]
 
 properties:
   int-gpios:

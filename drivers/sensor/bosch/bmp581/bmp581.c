@@ -550,7 +550,10 @@ static int bmp581_init(const struct device *dev)
 	drv->chip_id = 0;
 	memset(&drv->last_sample, 0, sizeof(drv->last_sample));
 
-	soft_reset(dev);
+	/** Skip reset in I3C as the initialization and bus discovery has been performed. */
+	if (conf->bus.rtio.type != BMP581_BUS_TYPE_I3C) {
+		soft_reset(dev);
+	}
 
 	ret = bmp581_reg_read_rtio(&conf->bus, BMP5_REG_CHIP_ID, &drv->chip_id, 1);
 	if (ret != BMP5_OK) {
@@ -714,7 +717,9 @@ static DEVICE_API(sensor, bmp581_driver_api) = {
 		     "the device-tree node properties");                                           \
                                                                                                    \
 	RTIO_DEFINE(bmp581_rtio_ctx_##i, 16, 16);                                                  \
-	I2C_DT_IODEV_DEFINE(bmp581_bus_##i, DT_DRV_INST(i));                                       \
+	COND_CODE_1(DT_INST_ON_BUS(i, i3c),                                                        \
+		   (I3C_DT_IODEV_DEFINE(bmp581_bus_##i, DT_DRV_INST(i))),                          \
+		   (I2C_DT_IODEV_DEFINE(bmp581_bus_##i, DT_DRV_INST(i))));                         \
                                                                                                    \
 	static struct bmp581_data bmp581_data_##i = {                                              \
 		.osr_odr_press_config = {                                                          \
@@ -735,7 +740,9 @@ static DEVICE_API(sensor, bmp581_driver_api) = {
 		.bus.rtio = {                                                                      \
 			.ctx = &bmp581_rtio_ctx_##i,                                               \
 			.iodev = &bmp581_bus_##i,                                                  \
-			.type = BMP581_BUS_TYPE_I2C,                                               \
+			COND_CODE_1(DT_INST_ON_BUS(i, i3c),                                        \
+				    (.type = BMP581_BUS_TYPE_I3C,),                                \
+				    (.type = BMP581_BUS_TYPE_I2C,))                                \
 		},                                                                                 \
 		.int_gpio = GPIO_DT_SPEC_INST_GET_OR(i, int_gpios, {0}),                           \
 	};                                                                                         \

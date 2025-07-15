@@ -26,6 +26,8 @@ int bmp581_prep_reg_read_rtio_async(const struct bmp581_bus *bus,
 	rtio_sqe_prep_read(read_buf_sqe, iodev, RTIO_PRIO_NORM, buf, size, NULL);
 	if (bus->rtio.type == BMP581_BUS_TYPE_I2C) {
 		read_buf_sqe->iodev_flags |= RTIO_IODEV_I2C_STOP | RTIO_IODEV_I2C_RESTART;
+	} else if (bus->rtio.type == BMP581_BUS_TYPE_I3C) {
+		read_buf_sqe->iodev_flags |= RTIO_IODEV_I3C_STOP | RTIO_IODEV_I3C_RESTART;
 	}
 
 	/** Send back last SQE so it can be concatenated later. */
@@ -60,6 +62,8 @@ int bmp581_prep_reg_write_rtio_async(const struct bmp581_bus *bus,
 	rtio_sqe_prep_tiny_write(write_buf_sqe, iodev, RTIO_PRIO_NORM, buf, size, NULL);
 	if (bus->rtio.type == BMP581_BUS_TYPE_I2C) {
 		write_buf_sqe->iodev_flags |= RTIO_IODEV_I2C_STOP;
+	} else if (bus->rtio.type == BMP581_BUS_TYPE_I3C) {
+		write_buf_sqe->iodev_flags |= RTIO_IODEV_I3C_STOP;
 	}
 
 	/** Send back last SQE so it can be concatenated later. */

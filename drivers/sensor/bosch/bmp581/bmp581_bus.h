@@ -13,6 +13,7 @@
 
 enum bmp581_bus_type {
 	BMP581_BUS_TYPE_I2C,
+	BMP581_BUS_TYPE_I3C,
 };
 
 struct bmp581_bus {

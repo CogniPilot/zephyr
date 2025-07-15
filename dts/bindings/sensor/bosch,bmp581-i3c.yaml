@@ -1,0 +1,3 @@
+compatible: "bosch,bmp581"
+
+include: ["bosch,bmp581-common.yaml", "i3c-device.yaml"]
