@@ -78,6 +78,69 @@ bmm350_stream_evt_finish:
 
 }
 
+/** TODO: Not working for IBI interrupts!!! */
+static int bmm350_enable_events(const struct device *dev)
+{
+	const struct bmm350_config *cfg = dev->config;
+	int err;
+
+	if (cfg->drdy_int.port) {
+		err = bmm350_prep_reg_write_async(dev, BMM350_REG_INT_CTRL, cfg->int_flags, NULL);
+		if (err < 0) {
+			return err;
+		}
+		err = gpio_pin_interrupt_configure_dt(&cfg->drdy_int, GPIO_INT_EDGE_TO_ACTIVE);
+		if (err < 0) {
+			return err;
+		}
+	} else if (cfg->bus.rtio.type == BMM350_BUS_TYPE_I3C) {
+		struct rtio_sqe *out_sqe;
+
+		err = bmm350_prep_reg_write_async(dev, BMM350_REG_INT_CTRL_IBI, 0x11, &out_sqe);
+		if (err < 0) {
+			return err;
+		}
+		out_sqe->flags |= RTIO_SQE_CHAINED;
+
+		err = bmm350_prep_reg_write_async(dev, BMM350_REG_INT_CTRL, 0x80, NULL);
+		if (err < 0) {
+			return err;
+		}
+	} else {
+		return -EIO;
+	}
+
+	rtio_submit(cfg->bus.rtio.ctx, 0);
+
+	return 0;
+}
+
+static int bmm350_disable_events(const struct device *dev)
+{
+	const struct bmm350_config *cfg = dev->config;
+	struct rtio_sqe *out_sqe;
+	int err;
+
+	if (cfg->drdy_int.port) {
+		(void)gpio_pin_interrupt_configure_dt(&cfg->drdy_int, GPIO_INT_DISABLE);
+	}
+
+	err = bmm350_prep_reg_write_async(dev, BMM350_REG_INT_CTRL, 0, &out_sqe);
+	if (err < 0) {
+		return err;
+	}
+	out_sqe->flags |= RTIO_SQE_CHAINED;
+
+	err = bmm350_prep_reg_write_async(dev, BMM350_REG_INT_CTRL_IBI, 0, NULL);
+	if (err < 0) {
+		return err;
+	}
+
+	rtio_submit(cfg->bus.rtio.ctx, 0);
+
+	return  0;
+}
+
 static void bmm350_event_handler(const struct device *dev)
 {
 	struct bmm350_data *data = dev->data;
@@ -92,12 +155,7 @@ static void bmm350_event_handler(const struct device *dev)
 
 		LOG_WRN("Callback triggered with no streaming submission - Disabling interrupts");
 
-		(void)gpio_pin_interrupt_configure_dt(&cfg->drdy_int, GPIO_INT_DISABLE);
-
-		err = bmm350_prep_reg_write_async(dev, BMM350_REG_INT_CTRL, 0, NULL);
-		if (err >= 0) {
-			rtio_submit(cfg->bus.rtio.ctx, 0);
-		}
+		(void)bmm350_disable_events(dev);
 
 		(void)atomic_set(&data->stream.state, BMM350_STREAM_OFF);
 
@@ -148,12 +206,20 @@ static void bmm350_gpio_callback(const struct device *port, struct gpio_callback
 	bmm350_event_handler(dev);
 }
 
+#if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(DT_DRV_COMPAT, i3c)
+static int bmm350_ibi_cb(struct i3c_device_desc *target, struct i3c_ibi_payload *payload)
+{
+	bmm350_event_handler(target->dev);
+
+	return 0;
+}
+#endif
+
 void bmm350_stream_submit(const struct device *dev,
 			  struct rtio_iodev_sqe *iodev_sqe)
 {
 	const struct sensor_read_config *read_config = iodev_sqe->sqe.iodev->data;
 	struct bmm350_data *data = dev->data;
-	const struct bmm350_config *cfg = dev->config;
 	int err;
 
 	if ((read_config->count != 1) ||
@@ -166,15 +232,7 @@ void bmm350_stream_submit(const struct device *dev,
 	data->stream.iodev_sqe = iodev_sqe;
 
 	if (atomic_cas(&data->stream.state, BMM350_STREAM_OFF, BMM350_STREAM_ON)) {
-		/* Set PMU command configuration */
-		err = bmm350_prep_reg_write_async(dev, BMM350_REG_INT_CTRL, cfg->int_flags, NULL);
-		if (err < 0) {
-			rtio_iodev_sqe_err(iodev_sqe, err);
-			return;
-		}
-		rtio_submit(cfg->bus.rtio.ctx, 0);
-
-		err = gpio_pin_interrupt_configure_dt(&cfg->drdy_int, GPIO_INT_EDGE_TO_ACTIVE);
+		err = bmm350_enable_events(dev);
 		if (err < 0) {
 			rtio_iodev_sqe_err(iodev_sqe, err);
 			return;
@@ -193,28 +251,47 @@ int bmm350_stream_init(const struct device *dev)
 
 	(void)atomic_set(&data->stream.state, BMM350_STREAM_OFF);
 
-	if (!device_is_ready(cfg->drdy_int.port)) {
-		LOG_ERR("INT device is not ready");
-		return -ENODEV;
+	if (cfg->drdy_int.port) {
+		if (!device_is_ready(cfg->drdy_int.port)) {
+			LOG_ERR("INT device is not ready");
+			return -ENODEV;
+		}
+
+		err = gpio_pin_configure_dt(&cfg->drdy_int, GPIO_INPUT);
+		if (err < 0) {
+			return err;
+		}
+
+		gpio_init_callback(&data->stream.cb, bmm350_gpio_callback, BIT(cfg->drdy_int.pin));
+
+		err = gpio_add_callback(cfg->drdy_int.port, &data->stream.cb);
+		if (err < 0) {
+			return err;
+		}
+
+#if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(DT_DRV_COMPAT, i3c)
+	} else if (cfg->bus.rtio.type == BMM350_BUS_TYPE_I3C) {
+		const struct i3c_iodev_data *iodev_data = cfg->bus.rtio.iodev->data;
+
+		struct i3c_device_desc *desc = i3c_device_find(iodev_data->bus, &cfg->bus.rtio.id);
+
+		if (desc == NULL) {
+			LOG_ERR("Failed to find I3C device");
+			return -ENODEV;
+		}
+		desc->ibi_cb = bmm350_ibi_cb;
+
+		err = i3c_ibi_enable(desc);
+		if (err) {
+			LOG_ERR("Failed to enable IBI: %d", err);
+			return err;
+		}
+#endif
+	} else {
+		LOG_ERR("Unexpected stream cfg - No INT nor I3C enabled");
+		return -EIO;
 	}
 
-	err = gpio_pin_configure_dt(&cfg->drdy_int, GPIO_INPUT);
-	if (err < 0) {
-		return err;
-	}
 
-	gpio_init_callback(&data->stream.cb, bmm350_gpio_callback, BIT(cfg->drdy_int.pin));
-
-	err = gpio_add_callback(cfg->drdy_int.port, &data->stream.cb);
-	if (err < 0) {
-		return err;
-	}
-
-	err = gpio_pin_interrupt_configure_dt(&cfg->drdy_int, GPIO_INT_DISABLE);
-	if (err < 0) {
-		return err;
-	}
-
-
-	return 0;
+	return bmm350_disable_events(dev);
 }

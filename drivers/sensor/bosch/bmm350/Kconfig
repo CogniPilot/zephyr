@@ -26,8 +26,10 @@ config BMM350_STREAM
 	bool "Streaming mode"
 	default y
 	depends on SENSOR_ASYNC_API
-	depends on GPIO
-	depends on $(dt_compat_any_has_prop,$(DT_COMPAT_BOSCH_BMM350),drdy-gpios)
+	depends on GPIO || \
+		   $(dt_compat_on_bus,$(DT_COMPAT_BOSCH_BMM350),i3c)
+	depends on $(dt_compat_any_has_prop,$(DT_COMPAT_BOSCH_BMM350),drdy-gpios) || \
+		   $(dt_compat_on_bus,$(DT_COMPAT_BOSCH_BMM350),i3c)
 	depends on !BMM350_TRIGGER
 
 endif # BMM350

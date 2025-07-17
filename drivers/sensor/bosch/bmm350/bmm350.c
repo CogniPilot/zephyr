@@ -1023,7 +1023,8 @@ static int bmm350_init(const struct device *dev)
 			.ctx = &bmm350_rtio_ctx_##inst,                                            \
 			.iodev = &bmm350_bus_##inst,                                               \
 			COND_CODE_1(DT_INST_ON_BUS(inst, i3c),                                     \
-				    (.type = BMM350_BUS_TYPE_I3C,),                                \
+				    (.type = BMM350_BUS_TYPE_I3C,                                  \
+				     .id = I3C_DEVICE_ID_DT_INST(inst),),                          \
 				    (.type = BMM350_BUS_TYPE_I2C,))                                \
 		},										   \
 		.bus_io = &bmm350_bus_rtio,                                                        \

@@ -32,6 +32,9 @@ struct bmm350_bus {
 		struct rtio *ctx;
 		struct rtio_iodev *iodev;
 		enum bmm350_bus_type type;
+#if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(DT_DRV_COMPAT, i3c)
+		const struct i3c_device_id id;
+#endif
 	} rtio;
 	struct i2c_dt_spec i2c;
 };
