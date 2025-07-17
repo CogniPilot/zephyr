@@ -273,6 +273,10 @@ static int set_powermode(const struct device *dev, enum bmm350_power_modes power
 			delay_us = sus_to_forced_mode_fast[avg];
 		}
 
+		if (powermode == BMM350_SUSPEND_MODE) {
+			delay_us = BMM350_GOTO_SUSPEND_DELAY;
+		}
+
 		/* Set PMU command configuration to desired power mode */
 		ret = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, reg_data);
 		k_usleep(delay_us);
