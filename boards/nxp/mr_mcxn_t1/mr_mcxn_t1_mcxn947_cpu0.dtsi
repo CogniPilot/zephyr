@@ -88,11 +88,51 @@
 	status = "okay";
 };
 
+/* Optical Flow Board */
+&flexcomm3 {
+	status = "okay";
+};
+
+/* Optical Flow Board */
+&flexcomm3_lpspi3 {
+	status = "okay";
+};
+
+/* Optical Flow Board */
+&flexcomm6 {
+	status = "okay";
+};
+
+/* Optical Flow Board */
+&flexcomm6_lpspi6 {
+	status = "okay";
+};
+
+/* Optical Flow Board */
+&flexcomm7 {
+	status = "okay";
+};
+
+/* Optical Flow Board */
+&flexcomm7_lpspi7 {
+	status = "okay";
+};
+
 &flexcomm8 {
 	status = "okay";
 };
 
 &flexcomm8_lpspi8 {
+	status = "okay";
+};
+
+/* Optical Flow Board */
+&flexcomm9 {
+	status = "okay";
+};
+
+/* Optical Flow Board */
+&flexcomm9_lpspi9 {
 	status = "okay";
 };
 
@@ -145,6 +185,14 @@ zephyr_udc0: &usb1 {
 };
 
 &i3c0 {
+	status = "disabled"; /* Locks-up on startup with busy wait */
+};
+
+&bmm350 {
+	status = "disabled"; /* Locks-up on startup with busy wait */
+};
+
+&bmp581 {
 	status = "disabled"; /* Locks-up on startup with busy wait */
 };
 
