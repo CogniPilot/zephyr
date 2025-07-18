@@ -7,6 +7,8 @@
 #include "mr_mcxn_t1-pinctrl.dtsi"
 #include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/sensor/afbr_s50.h>
+#include <zephyr/dt-bindings/sensor/icm42688.h>
 #include <zephyr/dt-bindings/sensor/icm45686.h>
 #include <zephyr/dt-bindings/led/led.h>
 
@@ -30,6 +32,88 @@
 	current-speed = <115200>;
 	pinctrl-0 = <&pinmux_flexcomm1_lpuart>;
 	pinctrl-names = "default";
+};
+
+/* Optical Flow Board */
+&flexcomm3_lpspi3 {
+	pinctrl-0 = <&pinmux_flexcomm3_lpspi>;
+    pinctrl-1 = <&pinmux_flexcomm3_lpspi_gpio>;
+	pinctrl-names = "default", "priv_start";
+    pcs-sck-delay = <50>;
+    sck-pcs-delay = <50>;
+    transfer-delay = <50>;
+
+	cs-gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;
+
+	afbr_s50: afbr_s50@0 {
+		compatible = "brcm,afbr-s50";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+		odr = <10>;
+		dual-freq-mode = <AFBR_S50_DT_DFM_MODE_4X>;
+		measurement-mode = <AFBR_S50_DT_MODE_SHORT_RANGE>;
+		int-gpios = <&gpio1 18 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		spi-mosi-gpios = <&gpio1 0 GPIO_ACTIVE_HIGH>;
+		spi-sck-gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
+		spi-miso-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+	};
+
+};
+
+/* Optical Flow Board */
+&flexcomm6_lpspi6 {
+	pinctrl-0 = <&pinmux_flexcomm6_lpspi>;
+	pinctrl-names = "default";
+    pcs-sck-delay = <50>;
+    sck-pcs-delay = <50>;
+    transfer-delay = <50>;
+
+	cs-gpios = <&gpio3 11 GPIO_ACTIVE_LOW>;
+
+	icm42688_optical_flow: icm42688_optical_flow@0 {
+        compatible = "invensense,icm42688";
+        reg = <0>;
+        spi-max-frequency = <20000000>;
+        int-gpios = <&gpio3 18 GPIO_ACTIVE_HIGH>;
+
+		accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
+		accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
+		accel-fs = <ICM42688_DT_ACCEL_FS_16>;
+		gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
+		gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
+		gyro-fs = <ICM42688_DT_GYRO_FS_2000>;
+ 
+		fifo-hires;
+    };
+};
+
+/* Optical Flow Board */
+&flexcomm7_lpspi7 {
+	pinctrl-0 = <&pinmux_flexcomm7_lpspi>;
+	pinctrl-names = "default";
+    pcs-sck-delay = <50>;
+    sck-pcs-delay = <50>;
+    transfer-delay = <50>;
+
+	cs-gpios = <&gpio3 5 GPIO_ACTIVE_LOW>;
+
+	icm45686_optical_flow: icm45686_optical_flow@0 {
+        compatible = "invensense,icm45686";
+        reg = <0>;
+        spi-max-frequency = <20000000>;
+        int-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
+
+        accel-pwr-mode = <ICM45686_DT_ACCEL_LN>;
+        accel-fs = <ICM45686_DT_ACCEL_FS_2>;
+        accel-odr = <ICM45686_DT_ACCEL_ODR_400>;
+        accel-lpf = <ICM45686_DT_ACCEL_LPF_BW_1_32>;
+        gyro-pwr-mode = <ICM45686_DT_GYRO_LN>;
+        gyro-fs = <ICM45686_DT_GYRO_FS_4000>;
+        gyro-odr = <ICM45686_DT_GYRO_ODR_400>;
+        gyro-lpf = <ICM45686_DT_GYRO_LPF_BW_1_32>;
+
+        fifo-watermark = <1>;
+    };
 };
 
 &flexcomm8_lpspi8 {
@@ -58,6 +142,26 @@
  
         fifo-watermark = <1>;
     };
+};
+
+/* Optical Flow Board */
+&flexcomm9_lpspi9 {
+	pinctrl-0 = <&pinmux_flexcomm9_lpspi>;
+	pinctrl-names = "default";
+    pcs-sck-delay = <50>;
+    sck-pcs-delay = <50>;
+    transfer-delay = <50>;
+
+	cs-gpios = <&gpio2 2 GPIO_ACTIVE_LOW>;
+
+	paa3905: paa3905@0 {
+        compatible = "pixart,paa3905";
+        reg = <0>;
+        spi-max-frequency = <10000000>;
+        int-gpios = <&gpio3 18 GPIO_ACTIVE_HIGH>;
+		led-control;
+    };
+
 };
 
 /*
@@ -106,7 +210,6 @@
 			label = "image-1";
 			reg = <0x0010A000 DT_SIZE_K(984)>;
 		};
-		/* storage_partition is placed in WINBOND flash memory*/
 	};
 };
 

@@ -16,13 +16,78 @@
 			input-enable;
 		};
 	};
-	
+
+	/* Optical Flow Board */
+	pinmux_flexcomm3_lpspi: pinmux_flexcomm3_lpspi {
+		group0 {
+			pinmux = <FC3_P0_PIO1_0>,
+				<FC3_P1_PIO1_1>,
+				<FC3_P2_PIO1_2>;
+				/*<FC3_P3_PIO1_3>; CS */
+			slew-rate = "fast";
+			drive-strength = "low";
+			input-enable;
+		};
+	};
+
+	/* Optical Flow Board */
+	pinmux_flexcomm3_lpspi_gpio: pinmux_flexcomm3_lpspi_gpio {
+		group0 {
+			pinmux = <PIO1_0>,
+				<PIO1_1>,
+				<PIO1_2>,
+				<PIO1_3>;
+			slew-rate = "fast";
+			drive-strength = "low";
+			input-enable;
+		};
+	};
+
+	/* Optical Flow Board */
+	pinmux_flexcomm6_lpspi: pinmux_flexcomm6_lpspi {
+		group0 {
+			pinmux = <FC6_P0_PIO3_1>,
+				<FC6_P1_PIO3_6>,
+				<FC6_P2_PIO3_10>;
+				/*<FC6_P3_PIO3_11>; CS */
+			slew-rate = "fast";
+			drive-strength = "low";
+			input-enable;
+		};
+	};
+
+	/* Optical Flow Board */
+	pinmux_flexcomm7_lpspi: pinmux_flexcomm7_lpspi {
+		group0 {
+			pinmux = <FC7_P0_PIO3_2>,
+				<FC7_P1_PIO3_3>,
+				<FC7_P2_PIO3_4>;
+				/*<FC7_P3_PIO3_5>; CS */
+			slew-rate = "fast";
+			drive-strength = "low";
+			input-enable;
+		};
+	};
+
 	pinmux_flexcomm8_lpspi: pinmux_flexcomm8_lpspi {
 		group0 {
 			pinmux = <FC8_P0_PIO3_14>,
 				<FC8_P1_PIO3_15>,
 				<FC8_P2_PIO3_16>;
-				/*<FC8_P3_PIO3_17>; CS */ 
+				/*<FC8_P3_PIO3_17>; CS */
+			slew-rate = "fast";
+			drive-strength = "low";
+			input-enable;
+		};
+	};
+
+	/* Optical Flow Board */
+	pinmux_flexcomm9_lpspi: pinmux_flexcomm9_lpspi {
+		group0 {
+			pinmux = <FC9_P0_PIO2_4>,
+				<FC9_P1_PIO2_3>,
+				<FC9_P2_PIO2_5>;
+				/*<FC9_P3_PIO2_2>; CS */
 			slew-rate = "fast";
 			drive-strength = "low";
 			input-enable;
@@ -46,6 +111,7 @@
 			slew-rate = "fast";
 			drive-strength = "low";
 			input-enable;
+			bias-pull-up;
 		};
 		mac_group {
 			pinmux = <ENET0_RXDV_PIO1_13>,
