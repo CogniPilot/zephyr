@@ -1,0 +1,13 @@
+#include <zephyr/dt-bindings/sensor/icm42686.h>
+
+sensor_0: &icm42686_0 {
+	accel-odr = <ICM42688_DT_ACCEL_ODR_32000>;
+	gyro-odr = <ICM42688_DT_ACCEL_ODR_32000>;
+};
+
+#include <zephyr/dt-bindings/sensor/icm42688.h>
+
+sensor_1: &icm42688_0 {
+	accel-odr = <ICM42688_DT_ACCEL_ODR_32000>;
+	gyro-odr = <ICM42688_DT_GYRO_ODR_32000>;
+};
