@@ -697,6 +697,14 @@ int mipi_csi2rx_clock_set_freq(clock_root_t clock_root, uint32_t rate)
 }
 #endif
 
+#if defined(CONFIG_IMXRT11XX_ON_ENTER_CPU_IDLE_HOOK)
+bool z_arm_on_enter_cpu_idle(void)
+{
+	/* Returning false prevent device goes to sleep mode */
+	return false;
+}
+#endif
+
 /**
  *
  * @brief Perform basic hardware initialization
