@@ -5,6 +5,8 @@
  */
 
 &lpspi1 {
+	/delete-property/dmas;
+	/delete-property/dma-names;
 	slow@0 {
 		compatible = "test-spi-loopback-slow";
 		reg = <0>;
