@@ -77,7 +77,7 @@ int start_udp(void)
 
 static int setup_stream(struct rtio *ctx, struct rtio_iodev *iodev)
 {
-	uint64_t period_ticks = (uint64_t)CONFIG_SYS_CLOCK_TICKS_PER_SEC * 2.5 / 1000;
+	uint64_t period_ticks = (uint64_t)CONFIG_SYS_CLOCK_TICKS_PER_SEC * 1.25 / 1000;
 	struct sensor_value ticks_per_event = {
 		.val1 = period_ticks,
 	};
