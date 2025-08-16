@@ -188,11 +188,11 @@ zephyr_udc0: &usb1 {
 	status = "disabled"; /* Locks-up on startup with busy wait */
 };
 
-&bmm350 {
+&bmm350_0 {
 	status = "disabled"; /* Locks-up on startup with busy wait */
 };
 
-&bmp581 {
+&bmp581_0 {
 	status = "disabled"; /* Locks-up on startup with busy wait */
 };
 
