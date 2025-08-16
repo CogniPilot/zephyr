@@ -186,7 +186,7 @@ static int paa3905_configure(const struct device *dev)
 	/* Start with disabled sequence, and override it if need be. */
 	struct reg_val_pair led_control_regs[] = {
 		{.reg = 0x7F, .val = 0x14},
-		{.reg = 0x6F, .val = 0x2C},
+		{.reg = 0x6F, .val = 0x30},
 		{.reg = 0x7F, .val = 0x00},
 	};
 
