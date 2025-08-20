@@ -159,7 +159,7 @@ static inline bool lpspi_next_rx_fill(const struct device *dev)
 	while (bytes_left > 0 && lpspi_data->rx_curr.sqe) {
 		struct rtio_sqe *sqe = lpspi_data->rx_curr.sqe;
 		int curr_len = MIN(get_sqe_clock_cycles(sqe) - lpspi_data->rx_curr.words_clocked,
-				   fetch_len);
+				   bytes_left);
 		uint8_t *buf = get_sqe_rx_buf(sqe);
 
 		if (buf != NULL) {
@@ -170,10 +170,13 @@ static inline bool lpspi_next_rx_fill(const struct device *dev)
 		bytes_left -= curr_len;
 		lpspi_data->rx_curr.words_clocked += curr_len;
 
-		if (lpspi_data->rx_curr.words_clocked == get_sqe_clock_cycles(sqe)) {
+		if (lpspi_data->rx_curr.words_clocked >= get_sqe_clock_cycles(sqe)) {
 			lpspi_data->rx_curr.sqe = get_next_sqe(sqe);
 			lpspi_data->rx_curr.words_clocked = 0;
 		}
+	}
+	if (bytes_left > 0) {
+		LOG_WRN("rx returned with bytes_left: %d - fetch_len: %d", bytes_left, fetch_len);
 	}
 
 	lpspi_data->total.words_clocked_rx += fetch_len - bytes_left;
@@ -220,7 +223,7 @@ static inline bool lpspi_next_tx_fill(const struct device *dev)
 	while (bytes_left > 0 && lpspi_data->tx_curr.sqe) {
 		struct rtio_sqe *sqe = lpspi_data->tx_curr.sqe;
 		int curr_len = MIN(get_sqe_clock_cycles(sqe) - lpspi_data->tx_curr.words_clocked,
-				   fifo_remaining_len);
+				   bytes_left);
 		const uint8_t *buf = get_sqe_tx_buf(sqe);
 
 		if (buf != NULL) {
@@ -231,10 +234,13 @@ static inline bool lpspi_next_tx_fill(const struct device *dev)
 		bytes_left -= curr_len;
 		lpspi_data->tx_curr.words_clocked += curr_len;
 
-		if (lpspi_data->tx_curr.words_clocked == get_sqe_clock_cycles(sqe)) {
+		if (lpspi_data->tx_curr.words_clocked >= get_sqe_clock_cycles(sqe)) {
 			lpspi_data->tx_curr.sqe = get_next_sqe(sqe);
 			lpspi_data->tx_curr.words_clocked = 0;
 		}
+	}
+	if (bytes_left > 0) {
+		LOG_WRN("tx returned with bytes_left: %d - fifo_remaining: %d", bytes_left, fifo_remaining_len);
 	}
 
 	lpspi_data->total.words_clocked_tx += fill_len - bytes_left;
@@ -259,16 +265,15 @@ static void lpspi_isr(const struct device *dev)
 {
 	LPSPI_Type *base = (LPSPI_Type *)DEVICE_MMIO_NAMED_GET(dev, reg_base);
 	uint32_t status_flags = base->SR;
-	uint32_t enabled_flags = base->IER;
 
-	if (status_flags & LPSPI_SR_RDF_MASK && enabled_flags & LPSPI_IER_RDIE_MASK) {
+	if (status_flags & LPSPI_SR_RDF_MASK && base->IER & LPSPI_IER_RDIE_MASK) {
 		if (!lpspi_next_rx_fill(dev) && lpspi_is_done_rx(dev)) {
 			base->IER &= ~LPSPI_IER_RDIE_MASK;
 			/* Flush rx fifo */
 			base->CR |= LPSPI_CR_RRF_MASK;
 		}
 	}
-	if (status_flags & LPSPI_SR_TDF_MASK && enabled_flags & LPSPI_IER_TDIE_MASK) {
+	if (status_flags & LPSPI_SR_TDF_MASK && base->IER & LPSPI_IER_TDIE_MASK) {
 		if (!lpspi_next_tx_fill(dev) && lpspi_is_done_tx(dev)) {
 			base->IER &= ~LPSPI_IER_TDIE_MASK;
 			/** We may be waiting on receiving the last chunk of RX data, hence changing
@@ -359,7 +364,7 @@ static void lpspi_iodev_start(const struct device *dev)
 		goto lpspi_iodev_start_on_error;
 	}
 
-	base->CR |= LPSPI_CR_RRF_MASK;
+	base->CR |= LPSPI_CR_RRF_MASK | LPSPI_CR_RTF_MASK;
 	base->IER = 0;
 	base->SR |= LPSPI_INTERRUPT_BITS;
 
