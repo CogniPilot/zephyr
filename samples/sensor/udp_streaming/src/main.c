@@ -6,8 +6,8 @@ SENSOR_DT_STREAM_IODEV(sensor_iodev_0, DT_NODELABEL(sensor_0),
 		       {SENSOR_TRIG_FIFO_WATERMARK, SENSOR_STREAM_DATA_INCLUDE});
 SENSOR_DT_STREAM_IODEV(sensor_iodev_1, DT_NODELABEL(sensor_1),
 		       {SENSOR_TRIG_FIFO_WATERMARK, SENSOR_STREAM_DATA_INCLUDE});
-RTIO_DEFINE_WITH_MEMPOOL(sensor_ctx_1, 2, 64, 64, 128, sizeof(void *));
-RTIO_DEFINE_WITH_MEMPOOL(sensor_ctx_0, 2, 64, 64, 128, sizeof(void *));
+RTIO_DEFINE_WITH_MEMPOOL(sensor_ctx_1, 2, 64, 128, 128, sizeof(void *));
+RTIO_DEFINE_WITH_MEMPOOL(sensor_ctx_0, 2, 64, 128, 128, sizeof(void *));
 
 struct recover_dev {
 	bool recover;
@@ -77,7 +77,7 @@ int start_udp(void)
 
 static int setup_stream(struct rtio *ctx, struct rtio_iodev *iodev)
 {
-	uint64_t period_ticks = (uint64_t)CONFIG_SYS_CLOCK_TICKS_PER_SEC * 1.25 / 1000;
+	uint64_t period_ticks = (uint64_t)CONFIG_SYS_CLOCK_TICKS_PER_SEC * 625 / 1000 / 1000;
 	struct sensor_value ticks_per_event = {
 		.val1 = period_ticks,
 	};
@@ -216,7 +216,7 @@ static void sensor_processing_thread(void *arg1, void *arg2)
 		sensor_processing_with_callback(ctx, process_events);
 		if (*recovery) {
 			*recovery = false;
-			printk("Error during stream. Attempting recovery...");
+			printk("Error during stream. Attempting recovery...\n");
 			rtio_sqe_drop_all(ctx);
 			k_sleep(K_MSEC(1));
 			err = setup_stream(ctx, iodev);
