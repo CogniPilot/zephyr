@@ -1,0 +1,13 @@
+#include <zephyr/dt-bindings/sensor/icm45686.h>
+
+sensor_1: &icm45686_0 {
+	accel-odr = <ICM45686_DT_GYRO_ODR_3200>;
+	gyro-odr = <ICM45686_DT_GYRO_ODR_3200>;
+	fifo-watermark = <4>;
+};
+
+sensor_0: &icm45686_1 {
+	accel-odr = <ICM45686_DT_GYRO_ODR_3200>;
+	gyro-odr = <ICM45686_DT_GYRO_ODR_3200>;
+	fifo-watermark = <4>;
+};
