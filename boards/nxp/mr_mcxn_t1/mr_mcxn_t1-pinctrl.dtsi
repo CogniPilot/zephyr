@@ -48,8 +48,8 @@
 		group0 {
 			pinmux = <FC6_P0_PIO3_1>,
 				<FC6_P1_PIO3_6>,
-				<FC6_P2_PIO3_10>;
-				/*<FC6_P3_PIO3_11>; CS */
+				<FC6_P2_PIO3_10>,
+				<FC6_P3_PIO3_11>;
 			slew-rate = "fast";
 			drive-strength = "low";
 			input-enable;
@@ -61,8 +61,8 @@
 		group0 {
 			pinmux = <FC7_P0_PIO3_2>,
 				<FC7_P1_PIO3_3>,
-				<FC7_P2_PIO3_4>;
-				/*<FC7_P3_PIO3_5>; CS */
+				<FC7_P2_PIO3_4>,
+				<FC7_P3_PIO3_5>;
 			slew-rate = "fast";
 			drive-strength = "low";
 			input-enable;
@@ -73,8 +73,8 @@
 		group0 {
 			pinmux = <FC8_P0_PIO3_14>,
 				<FC8_P1_PIO3_15>,
-				<FC8_P2_PIO3_16>;
-				/*<FC8_P3_PIO3_17>; CS */
+				<FC8_P2_PIO3_16>,
+				<FC8_P3_PIO3_17>;
 			slew-rate = "fast";
 			drive-strength = "low";
 			input-enable;

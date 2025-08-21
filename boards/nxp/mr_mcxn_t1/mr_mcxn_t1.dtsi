@@ -70,8 +70,6 @@
 	sck-pcs-delay = <50>;
 	transfer-delay = <50>;
 
-	cs-gpios = <&gpio3 11 GPIO_ACTIVE_LOW>;
-
 	icm42688: icm42688_optical_flow@0 {
 	compatible = "invensense,icm42688", "invensense,icm4268x";
 		reg = <0>;
@@ -99,8 +97,6 @@
 	sck-pcs-delay = <50>;
 	transfer-delay = <50>;
 
-	cs-gpios = <&gpio3 5 GPIO_ACTIVE_LOW>;
-
 	icm45686_1: icm45686_optical_flow@0 {
 		compatible = "invensense,icm45686";
 		reg = <0>;
@@ -126,8 +122,6 @@
 	pcs-sck-delay = <50>;
 	sck-pcs-delay = <50>;
 	transfer-delay = <50>;
-
-	cs-gpios = <&gpio3 17 GPIO_ACTIVE_LOW>;
 
 	icm45686_0: icm45686_hub@0 {
 		compatible = "invensense,icm45686";
