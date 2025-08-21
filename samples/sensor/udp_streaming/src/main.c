@@ -87,12 +87,8 @@ static int setup_stream(struct rtio *ctx, struct rtio_iodev *iodev)
 
 	printk("setting up stream...\n");
 
-	err = sensor_attr_set(read_config->sensor, SENSOR_CHAN_ALL,
+	(void)sensor_attr_set(read_config->sensor, SENSOR_CHAN_ALL,
 				SENSOR_ATTR_BATCH_DURATION, &ticks_per_event);
-	if (err != 0) {
-		printk("Failed to set batch-duration attribute: %d\n", err);
-		return err;
-	}
 
 	err = sensor_stream(iodev, ctx, (void *)iodev, NULL);
 	if (err != 0) {
