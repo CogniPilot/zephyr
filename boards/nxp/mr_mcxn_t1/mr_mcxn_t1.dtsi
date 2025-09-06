@@ -50,7 +50,7 @@
 		compatible = "brcm,afbr-s50";
 		reg = <0>;
 		spi-max-frequency = <10000000>;
-		odr = <10>;
+		odr = <50>;
 		dual-freq-mode = <AFBR_S50_DT_DFM_MODE_4X>;
 		measurement-mode = <AFBR_S50_DT_MODE_SHORT_RANGE>;
 		int-gpios = <&gpio1 18 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
@@ -243,13 +243,13 @@
 	pinctrl-names = "default";
 	i2c-scl-hz = <400000>;
 
-	bmp581_0: bmp581_hub@470000000000000050  {
+	bmp581_0: bmp581_0@470000000000000050  {
 		compatible = "bosch,bmp581";
 		reg = <0x47 0x0 0x50>;
 	};
 
-	bmm350_0: bmm350_hub@140000000000000050  {
-		compatible = "bosch,bmm350-i2c";
+	bmm350_0: bmm350_0@140000000000000050  {
+		compatible = "bosch,bmm350";
 		reg = <0x14 0x0 0x50>;
 	};
 };
