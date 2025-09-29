@@ -32,6 +32,12 @@ config ICM4268X_DECODER
 	  Compile the ICM4268X decoder API which allows decoding raw data returned
 	  from the sensor.
 
+config ICM4268X_SELFTEST
+	bool "ICM4268X self test enable"
+	default y
+	help
+		Enable the self test inside the ICM4268X and check if data returned is valid.
+
 choice
 	prompt "Trigger mode"
 	default ICM4268X_TRIGGER_NONE if ICM4268X_STREAM

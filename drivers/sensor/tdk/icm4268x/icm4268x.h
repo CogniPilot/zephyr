@@ -410,6 +410,17 @@ struct icm4268x_dev_cfg {
 int icm4268x_reset(const struct device *dev);
 
 /**
+ * @brief Start self test
+ * 
+ * @param dev icm4268x device pointer
+ * @param data self test result data
+ * 
+ * @retval 0 success
+ * @retval -errno Error
+ */
+int icm4268x_selftest(const struct device *dev);
+
+/**
  * @brief (Re)Configure the sensor with the given configuration
  *
  * @param dev icm4268x device pointer

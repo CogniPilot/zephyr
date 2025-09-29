@@ -141,6 +141,262 @@ static uint16_t icm4268x_compute_fifo_wm(const struct icm4268x_cfg *cfg)
 	return (uint16_t)MIN(modr, 0x7ff);
 }
 
+#ifndef INV_ABS
+#define INV_ABS(x) (((x) < 0) ? -(x) : (x))
+#endif
+
+int icm4268x_selftest(const struct device *dev)
+{
+	// struct icm4268x_dev_data *dev_data = dev->data;
+	const struct icm4268x_dev_cfg *dev_cfg = dev->config;
+	int res;
+	struct sensor_value acc[3];//, gyr[3];
+
+	uint8_t status = 0;
+	int it = 0; /* Number of sample read */
+	int sample_discarded = 0; /* Number of sample discarded */ 
+	int timeout = 300; /* us */
+	int32_t sum[3] = {0}; /* sum of all data read */
+	int32_t average_OFF[3] = {0};
+	int32_t average_ON[3] = {0};
+
+	uint8_t ST_code_regs[3];
+
+	do
+	{
+		int16_t sensor_data[3] = {0}; 
+
+		res = sensor_sample_fetch(dev);
+		res = sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, acc);
+		if (res != 0) {
+			LOG_ERR("Error reading data");
+			return -EINVAL;
+		}
+
+		sensor_data[0] = (acc[0].val1 << 8) | acc[0].val2;
+		sensor_data[1] = (acc[1].val1 << 8) | acc[1].val2;
+		sensor_data[2] = (acc[2].val1 << 8) | acc[2].val2;
+
+		if ((sensor_data[0] != -32768) && (sensor_data[1] != -32768) && (sensor_data[2] != -32768)) {
+			sum[0] += sensor_data[0];
+			sum[1] += sensor_data[1];
+			sum[2] += sensor_data[2];
+		} else {
+			sample_discarded++;
+		}
+		it++;
+		
+		k_msleep(1);
+		timeout--;
+	} while ((it < 200) && (timeout > 0));
+
+	/* Compute average value */
+	it -= sample_discarded;
+	average_OFF[0] = (sum[0] / it);
+	average_OFF[1] = (sum[1] / it);
+	average_OFF[2] = (sum[2] / it);
+
+	printf("AX: %d, AY: %d, AZ: %d\n", 
+			average_OFF[0], average_OFF[1], average_OFF[2]);
+
+	// Start self test for Accel and Gyro
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_SELF_TEST_CONFIG, 0x7f);
+	if (res != 0) {
+		LOG_ERR("Error writing SELF_TEST_CONFIG");
+		return -EINVAL;
+	}
+
+	//Wait 200ms for the oscillation to stabilize
+	k_msleep(200);
+
+	it = 0;
+	sample_discarded = 0;
+	sum[0] = 0;
+	sum[1] = 0;
+	sum[2] = 0;
+	timeout = 300;
+
+	do
+	{
+		// res = icm4268x_spi_read(&dev_cfg->spi, REG_INT_STATUS, &status, 1);
+		// if (res != 0) {
+		// 	LOG_ERR("Error reading INT status");
+		// 	return -EINVAL;
+		// }
+
+		// if (status & BIT_DATA_RDY_INT)
+		// {
+			int16_t sensor_data[3] = {0}; 
+
+			res = sensor_sample_fetch(dev);
+			res = sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, acc);
+			// err = sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, gyr);
+			if (res != 0) {
+				LOG_ERR("Error reading data");
+				return -EINVAL;
+			}
+
+			sensor_data[0] = (acc[0].val1 << 8) | acc[0].val2;
+			sensor_data[1] = (acc[1].val1 << 8) | acc[1].val2;
+			sensor_data[2] = (acc[2].val1 << 8) | acc[2].val2;
+
+			if ((sensor_data[0] != -32768) && (sensor_data[1] != -32768) && (sensor_data[2] != -32768)) {
+				sum[0] += sensor_data[0];
+				sum[1] += sensor_data[1];
+				sum[2] += sensor_data[2];
+			} else {
+				sample_discarded++;
+			}
+			it++;
+		// }
+		
+		k_msleep(1);
+		timeout--;
+	} while ((it < 200) && (timeout > 0));
+
+	//Disable self test
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_SELF_TEST_CONFIG, 0x0);
+	if (res != 0) {
+		LOG_ERR("Error writing SELF_TEST_CONFIG");
+		return -EINVAL;
+	}
+	
+	/* Compute average value */
+	it -= sample_discarded;
+	average_ON[0] = (sum[0] / it);
+	average_ON[1] = (sum[1] / it);
+	average_ON[2] = (sum[2] / it);
+
+	printf("AX: %d, AY: %d, AZ: %d\n", 
+			average_ON[0], average_ON[1], average_ON[2]);
+	
+	uint32_t STA_resp[3] = {0};
+
+	for (int i = 0; i < 3; i++)
+	{
+		STA_resp[i] = INV_ABS(average_ON[i] - average_OFF[i]);
+	}
+
+	printf("AX: %d, AY: %d, AZ: %d\n", 
+			STA_resp[0], STA_resp[1], STA_resp[2]);
+
+	//Check accel self-test result
+	//Select bank 2
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_BANK_SEL, 2);
+	//Read accelerometer calibration data
+	res = icm4268x_spi_read(&dev_cfg->spi, REG_XA_ST_DATA, ST_code_regs, 3);
+	//Select bank 0
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_BANK_SEL, 0);
+
+	for (i = 0; i < 3; i++) {
+		int fs_sel = &dev_cfg->accel_fs >> BIT_ACCEL_CONFIG0_FS_SEL_POS;
+		STA_OTP[i] = INV_ST_OTP_EQUATION(fs_sel, ST_code_regs[i]);
+	}
+	
+	
+
+	return status;
+
+
+	// struct sensor_value AX_test[1], AY_test[1], AZ_test[1];
+	// uint8_t AX_test[1];
+	// uint8_t AY_test[1];
+	// uint8_t AZ_test[1];
+	// uint8_t GX_test[1];
+	// uint8_t GY_test[1];
+	// uint8_t GZ_test[1];
+
+	// uint8_t self_test_cfg[1];
+
+	// Start self test
+	// res = icm4268x_spi_single_write(&dev_cfg->spi, REG_SELF_TEST_CONFIG, 0x7f);
+	// if (res != 0) {
+	// 	LOG_ERR("Error writing SELF_TEST_CONFIG");
+	// 	return -EINVAL;
+	// }
+
+	//Enable accelerometer self test
+	// res = icm4268x_spi_single_write(&dev_cfg->spi, REG_SELF_TEST_CONFIG, BIT_EN_AX_ST | BIT_EN_AY_ST | BIT_EN_AZ_ST);
+	// if (res != 0) {
+	// 	LOG_ERR("Error writing SELF_TEST_CONFIG");
+	// 	return -EINVAL;
+	// }
+
+	// res = icm4268x_spi_single_write(&dev_cfg->spi, REG_SELF_TEST_CONFIG, 0x3f);
+	// if (res != 0) {
+	// 	LOG_ERR("Error writing SELF_TEST_CONFIG");
+	// 	return -EINVAL;
+	// }
+
+	// printf("going to wait 3sec\n");
+	// //Wait 100ms
+	// k_msleep(3000);
+
+	// printf("finished waiting\n");
+
+	// res = icm4268x_spi_read(&dev_cfg->spi, REG_XA_ST_DATA, AX_test, 1);
+	// if (res != 0) {
+	// 	LOG_ERR("Error reading XA");
+	// 	return -EINVAL;
+	// }
+
+	// res = icm4268x_spi_read(&dev_cfg->spi, REG_YA_ST_DATA, AY_test, 1);
+	// if (res != 0) {
+	// 	LOG_ERR("Error reading YA");
+	// 	return -EINVAL;
+	// }
+
+	// res = icm4268x_spi_read(&dev_cfg->spi, REG_ZA_ST_DATA, AZ_test, 1);
+	// if (res != 0) {
+	// 	LOG_ERR("Error reading ZA");
+	// 	return -EINVAL;
+	// }
+
+	// res = icm4268x_spi_read(&dev_cfg->spi, REG_XG_ST_DATA, GX_test, 1);
+	// if (res != 0) {
+	// 	LOG_ERR("Error reading XG");
+	// 	return -EINVAL;
+	// }
+
+	// res = icm4268x_spi_read(&dev_cfg->spi, REG_YG_ST_DATA, GY_test, 1);
+	// if (res != 0) {
+	// 	LOG_ERR("Error reading YG");
+	// 	return -EINVAL;
+	// }
+
+	// res = icm4268x_spi_read(&dev_cfg->spi, REG_ZG_ST_DATA, GZ_test, 1);
+	// if (res != 0) {
+	// 	LOG_ERR("Error reading ZG");
+	// 	return -EINVAL;
+	// }
+
+	// res = sensor_sample_fetch(dev);
+	// res = sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, acc);
+	// res = sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, gyr);
+
+	// res = icm4268x_spi_read(&dev_cfg->spi, REG_SELF_TEST_CONFIG, self_test_cfg, 1);
+	// if (res != 0) {
+	// 	LOG_ERR("Error reading ZG");
+	// 	return -EINVAL;
+	// }
+
+	// printf("AX: %d, AY: %d, AZ: %d\nGX: %d, GY: %d, GZ: %d\nself-test reg: %x\n", 
+	// 		AX_test[0], AY_test[0], AZ_test[0],
+	// 		GX_test[0], GY_test[0], GZ_test[0],
+	// 		self_test_cfg[0]);
+
+	// printf("AX: %d.%06d; AY: %d.%06d; AZ: %d.%06d; "
+	// 	"GX: %d.%06d; GY: %d.%06d; GZ: %d.%06d;\n",
+	// 	       acc[0].val1, acc[0].val2,
+	// 	       acc[1].val1, acc[1].val2,
+	// 	       acc[2].val1, acc[2].val2,
+	// 		   gyr[0].val1, gyr[0].val2,
+	// 	       gyr[1].val1, gyr[1].val2,
+	// 	       gyr[2].val1, gyr[2].val2);
+
+	return 0;
+}
+
 int icm4268x_configure(const struct device *dev, struct icm4268x_cfg *cfg)
 {
 	struct icm4268x_dev_data *dev_data = dev->data;

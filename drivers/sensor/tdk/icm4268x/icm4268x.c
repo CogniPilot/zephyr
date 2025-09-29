@@ -319,6 +319,14 @@ int icm4268x_init(const struct device *dev)
 		return res;
 	}
 
+#ifdef CONFIG_ICM4268X_SELFTEST
+	res = icm4268x_selftest(dev);
+	if (res != 0) {
+		LOG_ERR("Failed to start self-test");
+		return res;
+	}
+#endif
+
 	return 0;
 }
 
