@@ -249,7 +249,7 @@
 	};
 
 	bmm350_0: bmm350_hub@140000000000000050  {
-		compatible = "bosch,bmm350-i2c";
+		compatible = "bosch,bmm350";
 		reg = <0x14 0x0 0x50>;
 	};
 };
