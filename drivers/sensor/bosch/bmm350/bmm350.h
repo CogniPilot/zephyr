@@ -344,12 +344,12 @@ enum bmm350_performance_parameters {
 /*!
  * @brief bmm350 self-test output values
  */
-struct bmm350_self_test {
+struct bmm350_init_self_test_values {
 	/* Variable to store self-test data on x-axis */
-    float out_ust_x;
+    float mag_x;
 
     /* Variable to store self-test data on y-axis */
-    float out_ust_y;
+    float mag_y;
 };
 
 /*!
