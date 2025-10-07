@@ -19,6 +19,8 @@
 #include "bmm350_decoder.h"
 #include "bmm350_stream.h"
 
+#include <stdio.h>
+
 LOG_MODULE_REGISTER(BMM350, CONFIG_SENSOR_LOG_LEVEL);
 
 static int bmm350_read_otp_word(const struct device *dev, uint8_t addr, uint16_t *lsb_msb)
@@ -953,132 +955,422 @@ static int pm_action(const struct device *dev, enum pm_device_action action)
 }
 #endif
 
-static int bmm350_perform_self_test(const struct device *dev)
+static int self_test_config(const struct device *dev, struct bmm350_self_test *out_data, uint8_t st_cmd, uint8_t pmu_cmd)
 {
-	struct sensor_value bef_mag_x, bef_mag_y, aft_mag_x, aft_mag_y;
-	const struct sensor_value osr = {0, 0};
-	struct sensor_value odr;
 	int err;
+	struct sensor_value out_ust[4];
+    struct bmm350_pmu_cmd_status_0 pmu_cmd_stat_0 = { 0 };
+    static float out_ustxh = 0.0, out_ustxl = 0.0, out_ustyh = 0.0, out_ustyl = 0.0;
 
-	//Get ODR value
-	mag_reg_to_odr(BMM350_ODR_25HZ, &odr);
+	//Enable self test with given command: 0x0d, 0x0b, 0x15, 0x13
+	err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, st_cmd);
+	if (err != 0) {
+		printk("%s: Start internal self-test failed", dev->name);
+	}
 
-	//Set in supsend mode and forced mode must be used to capture data before and after activating self-test
-	//self-test can only be activated for 1 axis at a time
+	//Sleep 1ms
+	k_msleep(1);
 
-	//Set power mode to suspend mode
-	err = bmm350_set_powermode(dev, BMM350_SUSPEND_MODE);
+    //Set power mode to forced mode with fast CRST recharge
+	err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, BMM350_PMU_CMD_FM_FAST);
 	if (err != 0) {
 		printk("%s: set power mode failed", dev->name);
 	}
+
+	//Sleep 6ms
+	k_msleep(6);
+
+	//Get power mode command status
+	err = bmm350_get_pmu_cmd_status_0(dev, &pmu_cmd_stat_0);
+	if (err != 0) {
+		printk("%s: failed getting power mode command status", dev->name);
+	}
+
+	printf("power mode = %d\n", pmu_cmd_stat_0.pmu_cmd_value);
+
+	//Check if power mode equals forced mode with fast CRST recharge
+	if (pmu_cmd_stat_0.pmu_cmd_value == BMM350_PMU_CMD_STATUS_0_FM_FAST)
+	{
+		printf("FM fast\n");
+
+		//Read data of the selected axis
+		err = bmm350_sample_fetch(dev, SENSOR_CHAN_MAGN_XYZ);
+		if (err != 0)
+		{
+			printk("Failed fetching XYZ");
+		}
+
+		switch (st_cmd)
+		{
+		case BMM350_SELF_TEST_POS_X:
+			err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &out_ust[0]);
+			if (err != 0)
+			{
+				printk("Failed getting XY data");
+			}
+
+			out_ustxh = sensor_value_to_float(&out_ust[0]);
+
+			printf("pos_x: %d.%06d => %f\n", out_ust[0].val1, out_ust[0].val2, (double) out_ustxh);
+			break;
+		
+		case BMM350_SELF_TEST_NEG_X:
+			err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &out_ust[1]);
+			if (err != 0)
+			{
+				printk("Failed getting XY data");
+			}
+
+			out_ustxl = sensor_value_to_float(&out_ust[1]);
+
+			printf("neg_x: %d.%06d => %f\n", out_ust[1].val1, out_ust[1].val2, (double) out_ustxl);
+			break;
+
+		case BMM350_SELF_TEST_POS_Y:
+			err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &out_ust[2]);
+			if (err != 0)
+			{
+				printk("Failed getting XY data");
+			}
+
+			out_ustyh = sensor_value_to_float(&out_ust[2]);
+
+			printf("pos_y: %d.%06d => %f\n", out_ust[2].val1, out_ust[2].val2, (double) out_ustyh);
+			break;
+
+		case BMM350_SELF_TEST_NEG_Y:
+			err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &out_ust[3]);
+			if (err != 0)
+			{
+				printk("Failed getting XY data");
+			}
+
+			out_ustyl = sensor_value_to_float(&out_ust[3]);
+
+			printf("neg_y: %d.%06d => %f\n", out_ust[3].val1, out_ust[3].val2, (double) out_ustyl);
+			break;
+		
+		default:
+			//Returns error if incorrect test is called
+			err = -EINVAL;
+			break;
+		}
+		
+
+    	//Compute output difference between negative and positives axis
+		out_data->out_ust_x = out_ustxh - out_ustxl;
+		out_data->out_ust_y = out_ustyh - out_ustyl;
+	}
+	else
+	{
+		printf("is not forced mode!\n");
+	}
+	
+	return err;
+}
+
+static int self_test_xy_axis(const struct device *dev, struct bmm350_self_test *out_data)
+{
+	int err;
+
+	err = self_test_config(dev, out_data, BMM350_SELF_TEST_POS_X, BMM350_PMU_CMD_FM_FAST);
+	err = self_test_config(dev, out_data, BMM350_SELF_TEST_NEG_X, BMM350_PMU_CMD_FM_FAST);
+	err = self_test_config(dev, out_data, BMM350_SELF_TEST_POS_Y, BMM350_PMU_CMD_FM_FAST);
+	err = self_test_config(dev, out_data, BMM350_SELF_TEST_NEG_Y, BMM350_PMU_CMD_FM_FAST);
+
+	if (err != 0) {
+		printk("%s: Failed self test", dev->name);
+	}
+
+	return err;
+}
+
+static int self_test_entry_config(const struct device *dev)
+{
+	struct sensor_value osr;
+	struct sensor_value odr;
+	struct bmm350_pmu_cmd_status_0 pmu_cmd_stat_0 = { 0 };
+	int err;
+
+
+	//Set power mode to suspend mode
+	err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, BMM350_PMU_CMD_SUS);
+	if (err != 0) {
+		printk("%s: set power mode failed", dev->name);
+	}
+
+	//Wait 30ms
+	k_msleep(30);
+
+	err = bmm350_get_pmu_cmd_status_0(dev, &pmu_cmd_stat_0);
+	printf("SUS: power mode = %d\n", pmu_cmd_stat_0.pmu_cmd_value);
+
+	//Get ODR value
+	mag_reg_to_odr(BMM350_ODR_100HZ, &odr);
+
+	//Get OSR value
+	mag_reg_to_osr(BMM350_AVERAGING_2, &osr);
 
 	//Set ODR and OSR to valid level for self-test. 25Hz and no averaging
 	set_mag_odr_osr(dev, &odr, &osr);
 
+	//Set power mode to suspend mode
+	err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, BMM350_PMU_CMD_SUS);
+	if (err != 0) {
+		printk("%s: set power mode failed", dev->name);
+	}
+
+	k_msleep(30);
+
 	//Enable X and Y axis
-	err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD_AXIS_EN, BMM350_EN_X_MSK | BMM350_EN_Y_MSK);
+	err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD_AXIS_EN, BMM350_EN_X_MSK | BMM350_EN_Y_MSK | BMM350_EN_Z_MSK);
 	if (err != 0) {
 		printk("%s: failed enabling channel X and Y", dev->name);
 	}
 
-	//Set power mode to forced mode
-	err = bmm350_set_powermode(dev, BMM350_FORCED_MODE);
+	//Set power mode to flux guided reset with full CRST recharge
+	err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, BMM350_PMU_CMD_FGR);
 	if (err != 0) {
 		printk("%s: set power mode failed", dev->name);
 	}
 
-	//Measure before test x and y
-	err = bmm350_sample_fetch(dev, SENSOR_CHAN_MAGN_XYZ);
-	if (err != 0)
-	{
-		printk("Failed fetching XYZ");
+	//Wait 30ms
+	k_msleep(30);	
+
+	err = bmm350_get_pmu_cmd_status_0(dev, &pmu_cmd_stat_0);
+	printf("FGR: power mode = %d\n", pmu_cmd_stat_0.pmu_cmd_value);
+
+	//Check if power mode status equals flux guided reset 
+	err = bmm350_get_pmu_cmd_status_0(dev, &pmu_cmd_stat_0);
+	if (err != 0) {
+		printk("%s: failed enabling channel X and Y", dev->name);
 	}
 
-	err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &bef_mag_x);
-	err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &bef_mag_y);
-	if (err != 0)
+	if (pmu_cmd_stat_0.pmu_cmd_value == BMM350_PMU_CMD_STATUS_0_FGR)
 	{
-		printk("Failed getting XY data");
+		//Set power mode to bit reset fast
+		err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, BMM350_PMU_CMD_BR_FAST);
+		if (err != 0) {
+			printk("%s: set power mode failed", dev->name);
+		}
+
+		//Sleep 4ms
+		k_msleep(4);
 	}
 
-	//Enable self test for x
-	err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, BMM350_SELF_TEST_POS_X);
-	if (err != 0)
-	{
-		printk("Failed enabling self test for axis X");
+	//Get power mode command status
+	err = bmm350_get_pmu_cmd_status_0(dev, &pmu_cmd_stat_0);
+	if (err != 0) {
+		printk("%s: failed reading power mode status", dev->name);
 	}
 
-	//Read mag_x
-	err = bmm350_sample_fetch(dev, SENSOR_CHAN_MAGN_XYZ);
-	if (err != 0)
+	printf("BR_FAST: power mode = %d\n", pmu_cmd_stat_0.pmu_cmd_value);
+
+	//Check if power mode equals bit reset fast
+	if (pmu_cmd_stat_0.pmu_cmd_value == BMM350_PMU_CMD_STATUS_0_BR_FAST)
 	{
-		printk("Failed fetching XYZ");
+		//Set power mode to forced mode fast
+		err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, BMM350_PMU_CMD_FM_FAST);
+		if (err != 0) {
+			printk("%s: set power mode failed", dev->name);
+		}
+
+		//Sleep 16ms
+		k_msleep(16);
+
+		//Get power mode command status
+		err = bmm350_get_pmu_cmd_status_0(dev, &pmu_cmd_stat_0);
+		if (err != 0) {
+			printk("%s: failed enabling channel X and Y", dev->name);
+		}
+
+		//Check if cmd status equals Forced mode fast
+		if (pmu_cmd_stat_0.pmu_cmd_value == BMM350_PMU_CMD_STATUS_0_FM_FAST)
+		{
+			//Sleep 10us
+			k_msleep(1);
+		}	
 	}
 
-	err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &aft_mag_x);
-	if (err != 0)
-	{
-		printk("Failed getting X data");
-	}
+	printf("FM_FAST: power mode = %d\n", pmu_cmd_stat_0.pmu_cmd_value);
 
-	//Clear self test register
+	return err;
+}
+
+static int bmm350_perform_self_test(const struct device *dev)
+{
+	struct bmm350_self_test out_data = {0.0, 0.0};
+	// struct sensor_value bef_mag_x, bef_mag_y, aft_mag_x, aft_mag_y, diff_mag_x = {0,0}, diff_mag_y = {0,0};
+	// struct sensor_value osr;
+	// struct sensor_value odr;
+	int err;
+
+	const float internal_magn_field_ut = 130; 	//Internal generated magnetic field at self test is 130uT.
+
+	
+	//Do self-test entry configuration
+	err = self_test_entry_config(dev);
+
+	//Run self-tests and receive output data
+	err = self_test_xy_axis(dev, &out_data);
+
+	//Disable self-test register
 	err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, 0);
-	if (err != 0)
-	{
-		printk("Failed enabling self test for axis X");
+	if (err != 0) {
+		printk("%s: Disabling internal self-test failed", dev->name);
 	}
 
-	//Enable self test for y
-	err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, BMM350_SELF_TEST_POS_Y);
-	if (err != 0)
-	{
-		printk("Failed enabling self test for axis X");
-	}
+	//Sleep 1ms
+	k_msleep(1);
 
-	k_msleep(1);	//Wait 1ms
-
-	//Read mag_y
-	err = bmm350_sample_fetch(dev, SENSOR_CHAN_MAGN_XYZ);
-	if (err != 0)
-	{
-		printk("Failed fetching XYZ");
-	}
-
-	err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &aft_mag_y);
-	if (err != 0)
-	{
-		printk("Failed getting X data");
-	}
-
-	//Clear self test register
-	err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, 0);
-	if (err != 0)
-	{
-		printk("Failed enabling self test for axis X");
-	}
-
-	//Set power mode to suspend mode
 	err = bmm350_set_powermode(dev, BMM350_SUSPEND_MODE);
 	if (err != 0) {
 		printk("%s: set power mode failed", dev->name);
 	}
-	
-	//Set power mode normal
+
+	k_msleep(30);
+
+	//Set power mode to normal mode
+	// err = bmm350_reg_write(dev, BMM350_REG_PMU_CMD, BMM350_PMU_CMD_NM);
 	err = bmm350_set_powermode(dev, BMM350_NORMAL_MODE);
 	if (err != 0) {
 		printk("%s: set power mode failed", dev->name);
 	}
+
+	k_msleep(30);
+
+	// //Set power mode to forced mode
+	// err = bmm350_set_powermode(dev, BMM350_FORCED_MODE_FAST);
+	// if (err != 0) {
+	// 	printk("%s: set power mode failed", dev->name);
+	// }
+
+	// k_msleep(30);	//Wait 30ms
+
+	// //Measure before test x and y
+	// err = bmm350_sample_fetch(dev, SENSOR_CHAN_MAGN_XYZ);
+	// if (err != 0)
+	// {
+	// 	printk("Failed fetching XYZ");
+	// }
+
+	// err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &bef_mag_x);
+	// err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &bef_mag_y);
+	// if (err != 0)
+	// {
+	// 	printk("Failed getting XY data");
+	// }
+
+	// //Enable self test for x
+	// err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, BMM350_SELF_TEST_POS_X);
+	// if (err != 0)
+	// {
+	// 	printk("Failed enabling self test for axis X");
+	// }
+
+	// k_msleep(1);	//Wait 1ms
+
+	// //Read mag_x
+	// err = bmm350_sample_fetch(dev, SENSOR_CHAN_MAGN_XYZ);
+	// if (err != 0)
+	// {
+	// 	printk("Failed fetching XYZ");
+	// }
+
+	// err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &aft_mag_x);
+	// if (err != 0)
+	// {
+	// 	printk("Failed getting X data");
+	// }
+
+	// //Clear self test register
+	// err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, 0);
+	// if (err != 0)
+	// {
+	// 	printk("Failed enabling self test for axis X");
+	// }
+
+	// k_msleep(1);	//Wait 1ms
+
+	// //Enable self test for y
+	// err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, BMM350_SELF_TEST_POS_Y);
+	// if (err != 0)
+	// {
+	// 	printk("Failed enabling self test for axis X");
+	// }
+
+	// k_msleep(1);	//Wait 1ms
+
+	// //Read mag_y
+	// err = bmm350_sample_fetch(dev, SENSOR_CHAN_MAGN_XYZ);
+	// if (err != 0)
+	// {
+	// 	printk("Failed fetching XYZ");
+	// }
+
+	// err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &aft_mag_y);
+	// if (err != 0)
+	// {
+	// 	printk("Failed getting X data");
+	// }
+
+	// //Clear self test register
+	// err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, 0);
+	// if (err != 0)
+	// {
+	// 	printk("Failed enabling self test for axis X");
+	// }
+
+	// k_msleep(1);	//Wait 1ms
+
+	// //Set power mode to suspend mode
+	// err = bmm350_set_powermode(dev, BMM350_SUSPEND_MODE);
+	// if (err != 0) {
+	// 	printk("%s: set power mode failed", dev->name);
+	// }
+
+	// k_msleep(30);	//Wait 30ms
 	
-	//Compute whether aft_mag - bef_mag >= 130 uT
-	printf("%s: \t X_bef: %d.%06d; X_aft: %d.%06d; Y_bef: %d.%06d; Y_aft: %d.%06d;\n",
-			   	dev->name,
-		       	bef_mag_x.val1, bef_mag_x.val2,
-		       	aft_mag_x.val1, aft_mag_x.val2,
-		       	bef_mag_y.val1, bef_mag_y.val2,
-			   	aft_mag_y.val1, aft_mag_y.val2);
+	// //Set power mode normal
+	// err = bmm350_set_powermode(dev, BMM350_NORMAL_MODE);
+	// if (err != 0) {
+	// 	printk("%s: set power mode failed", dev->name);
+	// }
 
+	// k_msleep(30);	//Wait 30ms
+	
+	// //Compute whether aft_mag - bef_mag >= 130 uT
+	// double fl_bef_mag_x = sensor_value_to_double(&bef_mag_x);
+	// double fl_bef_mag_y = sensor_value_to_double(&bef_mag_y);
+	// double fl_aft_mag_x = sensor_value_to_double(&aft_mag_x);
+	// double fl_aft_mag_y = sensor_value_to_double(&aft_mag_y);
 
-	//Return self-test pass or fail
+	// printf("%s: \t X_bef: %d.%06d; X_aft: %d.%06d; Y_bef: %d.%06d; Y_aft: %d.%06d;\n",
+	// 		   	dev->name,
+	// 	       	bef_mag_x.val1, bef_mag_x.val2,
+	// 	       	aft_mag_x.val1, aft_mag_x.val2,
+	// 	       	bef_mag_y.val1, bef_mag_y.val2,
+	// 		   	aft_mag_y.val1, aft_mag_y.val2);
+
+	// double fl_diff_mag_x = fl_aft_mag_x - fl_bef_mag_x;
+	// double fl_diff_mag_y = fl_aft_mag_y - fl_bef_mag_y;
+
+	// sensor_value_from_double(&diff_mag_x, fl_diff_mag_x);
+	// sensor_value_from_double(&diff_mag_y, fl_diff_mag_y);
+
+	// printf("%s: \tmag_x: %d.%06d; mag_y: %d.%06d\n",
+	// 			dev->name, 
+	// 			diff_mag_x.val1, diff_mag_x.val2, 
+	// 			diff_mag_y.val1, diff_mag_y.val2);
+
+	printf("%s: \tmag_x: %f; mag_y: %f\n", dev->name, (double) out_data.out_ust_x, (double) out_data.out_ust_y);
+
+	// If difference value is lower than given spec 130uT, the sensor is out of spec.
+	if ((out_data.out_ust_x < internal_magn_field_ut) || (out_data.out_ust_y < internal_magn_field_ut))	
+	{
+		//Return fail
+		return -EIO;
+	}
 
 	return 0;
 }
@@ -1103,8 +1395,13 @@ static int bmm350_init(const struct device *dev)
 		return -EIO;
 	}
 
+#ifdef CONFIG_BMM350_SELFTEST_EN
 	/* Do self test */
-	bmm350_perform_self_test(dev);
+	if (bmm350_perform_self_test(dev) < 0) {
+		LOG_ERR("Self-test failed.");
+		return -EIO;
+	}
+#endif
 
 #ifdef CONFIG_BMM350_TRIGGER
 	if (bmm350_trigger_mode_init(dev) < 0) {

@@ -28,4 +28,10 @@ config BMM350_STREAM
 	depends on $(dt_compat_any_has_prop,$(DT_COMPAT_BOSCH_BMM350),drdy-gpios)
 	depends on !BMM350_TRIGGER
 
+config BMM350_SELFTEST_EN
+	bool "Enable self-test"
+	default n
+	help
+		Enable the internal self-test and verify if the BMM350 data is valid.
+
 endif # BMM350

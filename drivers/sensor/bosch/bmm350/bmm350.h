@@ -342,6 +342,17 @@ enum bmm350_performance_parameters {
 };
 
 /*!
+ * @brief bmm350 self-test output values
+ */
+struct bmm350_self_test {
+	/* Variable to store self-test data on x-axis */
+    float out_ust_x;
+
+    /* Variable to store self-test data on y-axis */
+    float out_ust_y;
+};
+
+/*!
  * @brief bmm350 compensated magnetometer data and temperature data
  */
 struct bmm350_mag_temp_data {
