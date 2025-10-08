@@ -69,4 +69,10 @@ config ICM45686_STREAM
 	help
 	  Enable streaming of sensor data.
 
+config ICM45686_SELFTEST_EN
+	bool "Enable self-test"
+	default "n"
+	help
+		Enable self-test of ICM45686
+
 endif # ICM45686

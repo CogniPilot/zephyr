@@ -29,6 +29,10 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ICM45686, CONFIG_SENSOR_LOG_LEVEL);
 
+#define EDMP_ROM_START_ADDR_IRQ0 EDMP_ROM_BASE
+#define EDMP_ROM_START_ADDR_IRQ1 (EDMP_ROM_BASE + 0x04)
+#define EDMP_ROM_START_ADDR_IRQ2 (EDMP_ROM_BASE + 0x08)
+
 static inline int reg_write(const struct device *dev, uint8_t reg, uint8_t val)
 {
 	return icm45686_bus_write(dev, reg, &val, 1);
@@ -37,6 +41,34 @@ static inline int reg_write(const struct device *dev, uint8_t reg, uint8_t val)
 static inline int reg_read(const struct device *dev, uint8_t reg, uint8_t *val)
 {
 	return icm45686_bus_read(dev, reg, val, 1);
+}
+
+static int write_mreg(const struct device *dev, uint32_t reg, uint32_t len, const uint8_t *buf)
+{
+	uint8_t data[3];
+	int err = 0;
+
+	/* First two bytes are the address where we want to write */
+	data[0] = (reg & 0xFF00) >> 8;
+	data[1] = reg & 0xFF;
+	/* 3rd byte is the first data to write*/
+	data[2] = buf[0];
+
+	/* Burst write address and first byte */
+	k_usleep(4);	//Sleep 4us
+	err |= icm45686_bus_write(dev, REG_IREG_ADDR_15_8, data, 3);
+	k_usleep(4);	//Sleep 4us
+
+	for (int i = 1; i < len; i++)
+	{
+		err |= icm45686_bus_write(dev, REG_IREG_DATA, buf[i], 1);
+	}
+	
+}
+
+static int read_mreg(const struct device *dev, uint32_t reg, uint32_t len, const uint8_t *buf)
+{
+	
 }
 
 static int icm45686_sample_fetch(const struct device *dev,
@@ -244,6 +276,123 @@ static DEVICE_API(sensor, icm45686_driver_api) = {
 #endif /* CONFIG_SENSOR_ASYNC_API */
 };
 
+static int icm45686_perform_selftest(const struct device *dev)
+{
+	inv_imu_selftest_parameters_t st_params;
+	uint32_t tmp_stc_params = 0;
+	uint8_t read_val;
+
+	/* Do soft-reset */
+	//Do soft-reset? and wait 10ms
+
+	/* Configure start-address for EDMP */
+	//Write start address of 3 EDMP IRQ handlers in EDMP_PRGRM_IRQ0_0
+	//EDMP_ROM_START_ADDR_IRQ0, EDMP_ROM_START_ADDR_IRQ1, EDMP_ROM_START_ADDR_IRQ2
+	uint8_t start_addr[] = {EDMP_ROM_START_ADDR_IRQ0 & 0xff,
+				(EDMP_ROM_START_ADDR_IRQ0 & 0xff00) >> 8,
+				EDMP_ROM_START_ADDR_IRQ1 & 0xff,
+				(EDMP_ROM_START_ADDR_IRQ1 & 0xff00) >> 8,
+				EDMP_ROM_START_ADDR_IRQ2 & 0xff,
+				(EDMP_ROM_START_ADDR_IRQ2 & 0xff00) >> 8};
+
+	write_mreg(dev, REG_EDMP_PRGRM_IRQ0_0, sizeof(start_addr), &start_addr[0]);
+
+	// reg_write(dev, REG_EDMP_PRGRM_IRQ0_0, (EDMP_ROM_START_ADDR_IRQ0 & 0xff));
+	// reg_write(dev, REG_EDMP_PRGRM_IRQ0_1, ((EDMP_ROM_START_ADDR_IRQ0 & 0xff00) >> 8));
+	// reg_write(dev, REG_EDMP_PRGRM_IRQ1_0, (EDMP_ROM_START_ADDR_IRQ1 & 0xff));
+	// reg_write(dev, REG_EDMP_PRGRM_IRQ1_1, ((EDMP_ROM_START_ADDR_IRQ1 & 0xff00) >> 8));
+	// reg_write(dev, REG_EDMP_PRGRM_IRQ2_0, (EDMP_ROM_START_ADDR_IRQ2 & 0xff));
+	// reg_write(dev, REG_EDMP_PRGRM_IRQ2_1, ((EDMP_ROM_START_ADDR_IRQ2 & 0xff00) >> 8));
+
+	//Write stack pointer start addres to EDMP_SP_START_ADDR
+	// /* Only 8 MSB of SP address is written to register */
+	//uint8_t stack_addr = (uint8_t)(APEX_FEATURE_STACK_END >> 8);
+	reg_write(dev, REG_EDMP_SP_START_ADDR, (APEX_FEATURE_STACK_END >> 8));
+
+	/* Set self-test parameters */
+	//Set self-test parameters
+	st_params.accel_en 			= SELFTEST_ACCEL_EN;
+	st_params.gyro_en 			= SELFTEST_GYRO_EN;
+	st_params.avg_time 			= SELFTEST_AVG_TIME_320_MS;
+	st_params.accel_limit 		= SELFTEST_ACCEL_THRESHOLD_50_PERCENT;
+	st_params.gyro_limit 		= SELFTEST_GYRO_THRESHOLD_50_PERCENT;
+	st_params.patch_settings 	= 0;
+
+	//Write self-test parameters to registers
+	tmp_stc_params = st_params.accel_en | st_params.gyro_en | st_params.avg_time | st_params.accel_limit | st_params.gyro_limit | st_params.patch_settings;
+
+	//Set register to indirectly write to SRAM
+	reg_write(dev, REG_IREG_ADDR_7_0, REG_IMEM_SRAM_REG_56 & 0xff);
+	reg_write(dev, REG_IREG_ADDR_15_8, (REG_IMEM_SRAM_REG_56 & 0xff00) >> 8);
+
+	//Set data to write to SRAM register
+	reg_write(dev, REG_IREG_DATA, tmp_stc_params & 0xff);
+
+	//Sleep 4us
+	k_usleep(4);
+
+	//Write next bit of data. The register address will increment now so we set REG_IMEM_SRAM_REG_57
+	reg_write(dev, REG_IREG_DATA, (tmp_stc_params & 0xff00) >> 8);
+
+	//Sleep 4us
+	k_usleep(4);
+
+	//Disable debug at self-test
+	//Set register to indirectly write to SRAM
+	reg_write(dev, REG_IREG_ADDR_7_0, REG_IMEM_SRAM_REG_64 & 0xff);
+	reg_write(dev, REG_IREG_ADDR_15_8, (REG_IMEM_SRAM_REG_64 & 0xff00) >> 8);
+
+	//Disable debug
+	reg_write(dev, REG_IREG_DATA, 0);
+
+	//Sleep 4us
+	k_usleep(4);
+
+	//Set patch settings
+	//Set register to indirectly write to SRAM
+	reg_write(dev, REG_IREG_ADDR_7_0, REG_IMEM_SRAM_STC_PATCH_EN & 0xff);
+	reg_write(dev, REG_IREG_ADDR_15_8, (REG_IMEM_SRAM_STC_PATCH_EN & 0xff00) >> 8);
+
+	//Disable patches execution in SRAM
+	reg_write(dev, REG_IREG_DATA, st_params.patch_settings);
+
+	//Sleep 4us
+	k_usleep(4);
+
+	/* Run internal self-test */
+	//Read Host_MSG and only set the testopenable bit
+	reg_read(dev, REG_HOST_MSG, &read_val);
+	read_val |= 0x1; 	//Enable test operation
+	reg_write(dev, REG_HOST_MSG, read_val);
+
+	//Enable self-test interrupt generation in APEX_CONFIG1 register
+	reg_read(dev, REG_INT_APEX_CONFIG1, &read_val);
+	read_val &= ~0x4; 	//Enable interrupt generation when self-test is done
+	reg_write(dev, REG_INT_APEX_CONFIG1, read_val);
+
+	//Disable the eDMP to be run once when IRQ2 is triggered by setting the EDMP_ON_DEMAND_EN bit.
+	//STATUS_MASK_PIN_16_23 &= ~0x20
+
+
+	//Enable EDMP in EDMP_APEX_EN1 register
+
+	//Run EDMP on demand by setting it in Host_MSG register
+
+	//Run a while loop to wait for the self-test done interrupt in apex_status1 register
+	//Every loop wait 100us. Return error after timeout of 100 loops (10ms)
+
+	//Disable self-test interrupt generation in APEX_CONFIG1 register
+
+	/* Get self-test output */
+	//Read ST_status from IMEM_SRAM_REG_68
+
+	//Check if ST_STATUS == 0 -> Done
+
+	//Check if gyro and accel axis passed test
+
+	//Return pass or fail
+}
+
 static int icm45686_init(const struct device *dev)
 {
 	struct icm45686_data *data = dev->data;
@@ -262,6 +411,13 @@ static int icm45686_init(const struct device *dev)
 	if ((data->rtio.type == ICM45686_BUS_I2C) && !i2c_is_ready_iodev(data->rtio.iodev)) {
 		LOG_ERR("Bus is not ready");
 		return -ENODEV;
+	}
+#endif
+#if CONFIG_ICM45686_SELFTEST_EN
+	if (icm45686_perform_selftest(dev) != 0)
+	{
+		LOG_ERR("Failed self-test")
+		return -EIO;
 	}
 #endif
 

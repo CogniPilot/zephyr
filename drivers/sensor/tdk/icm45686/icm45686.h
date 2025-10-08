@@ -18,6 +18,58 @@
 #include <zephyr/drivers/i3c.h>
 #endif
 
+typedef enum {
+	SELFTEST_AVG_TIME_10_MS  = 0x0000,
+	SELFTEST_AVG_TIME_20_MS  = 0x0080,
+	SELFTEST_AVG_TIME_40_MS  = 0x0100,
+	SELFTEST_AVG_TIME_80_MS  = 0x0180,
+	SELFTEST_AVG_TIME_160_MS = 0x0200,
+	SELFTEST_AVG_TIME_320_MS = 0x0280
+} selftest_average_time_t;
+
+typedef enum {
+	SELFTEST_ACCEL_THRESHOLD_5_PERCENT  = 0x0000,
+	SELFTEST_ACCEL_THRESHOLD_10_PERCENT = 0x0400,
+	SELFTEST_ACCEL_THRESHOLD_15_PERCENT = 0x0800,
+	SELFTEST_ACCEL_THRESHOLD_20_PERCENT = 0x0c00,
+	SELFTEST_ACCEL_THRESHOLD_25_PERCENT = 0x1000,
+	SELFTEST_ACCEL_THRESHOLD_30_PERCENT = 0x1400,
+	SELFTEST_ACCEL_THRESHOLD_40_PERCENT = 0x1800,
+	SELFTEST_ACCEL_THRESHOLD_50_PERCENT = 0x1c00
+} selftest_accel_threshold_t;
+
+typedef enum {
+	SELFTEST_GYRO_THRESHOLD_5_PERCENT  = 0x0000,
+	SELFTEST_GYRO_THRESHOLD_10_PERCENT = 0x2000,
+	SELFTEST_GYRO_THRESHOLD_15_PERCENT = 0x4000,
+	SELFTEST_GYRO_THRESHOLD_20_PERCENT = 0x6000,
+	SELFTEST_GYRO_THRESHOLD_25_PERCENT = 0x8000,
+	SELFTEST_GYRO_THRESHOLD_30_PERCENT = 0xa000,
+	SELFTEST_GYRO_THRESHOLD_40_PERCENT = 0xc000,
+	SELFTEST_GYRO_THRESHOLD_50_PERCENT = 0xe000
+} selftest_gyro_threshold_t;
+
+/** Self-Test parameters */
+typedef struct {
+	/** If set, enable accel self-test */
+	uint8_t accel_en;
+
+	/** If set, enable gyro self-test */
+	uint8_t gyro_en;
+
+	/** Averaging time used to perform self-test */
+	selftest_average_time_t avg_time;
+
+	/** Tolerance between factory trim and accel self-test response */
+	selftest_accel_threshold_t accel_limit;
+
+	/** Tolerance between factory trim and gyro self-test response */
+	selftest_gyro_threshold_t gyro_limit;
+
+	/** Mechanism for adding patches to self-test operations */
+	uint32_t patch_settings;
+} inv_imu_selftest_parameters_t;
+
 struct icm45686_encoded_payload {
 	union {
 		uint8_t buf[14];

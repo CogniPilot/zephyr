@@ -15,6 +15,13 @@
 /* Address value has a read bit */
 #define REG_READ_BIT BIT(7)
 
+/* IREG BASE ADDR OFFSETS */
+#define IMEM_SRAM_BASE 		0x0000
+#define IPREG_BAR_BASE 		0XA000
+#define IPREG_SYS1_BASE 	0xA400
+#define IPREG_SYS2_BASE 	0xA500
+#define IPREG_TOP1_BASE 	0xA200
+
 /* Registers */
 /* Register Bank 0 */
 #define REG_ACCEL_DATA_X1_UI			0x00
@@ -50,11 +57,87 @@
 #define REG_FIFO_CONFIG4			0x22
 #define REG_DRIVE_CONFIG0			0x32
 #define REG_DRIVE_CONFIG1			0x33
+#define REG_INT_APEX_CONFIG0 		0x39
+#define REG_INT_APEX_CONFIG1 		0x3A
+#define REG_INT_APEX_STATUS0 		0x3B
+#define REG_INT_APEX_STATUS1 		0x3C
 #define REG_WHO_AM_I				0x72
+#define REG_HOST_MSG 				0x73
 #define REG_IREG_ADDR_15_8			0x7C
 #define REG_IREG_ADDR_7_0			0x7D
 #define REG_IREG_DATA				0x7E
 #define REG_MISC2				0x7F
+
+/* Register Bank IMEM_SRAM */
+#define REG_IMEM_SRAM_REG_56 		0x38 + IMEM_SRAM_BASE	//Config self-test
+#define REG_IMEM_SRAM_REG_57		0X39 + IMEM_SRAM_BASE	//Config self-test tolerance limits
+#define REG_IMEM_SRAM_REG_64		0X40 + IMEM_SRAM_BASE	//Self-test debug enable register
+#define REG_IMEM_SRAM_REG_68		0X44 + IMEM_SRAM_BASE	//Self-test status register
+
+/* stc_patch_en
+ *
+ * Mechanism for enabling patches execution in SRAM for self-test operations
+ * bit0: If set, enable SRAM patching for accel self-test phase 1
+ * bit1: If set, enable SRAM patching for accel self-test phase 2
+ * bit2: If set, enable SRAM patching for gyro self-test phase 1
+ * bit3: If set, enable SRAM patching for gyro self-test phase 2
+ */
+#define REG_IMEM_SRAM_STC_PATCH_EN      0x3c
+
+/* Self-test register bits */
+//EDMP_STC_RESULTS
+#define STC_RESULTS_ACCEL_X_MASK   0x0001
+#define STC_RESULTS_ACCEL_Y_MASK   0x0002
+#define STC_RESULTS_ACCEL_Z_MASK   0x0004
+#define STC_RESULTS_GYRO_X_MASK    0x0008
+#define STC_RESULTS_GYRO_Y_MASK    0x0010
+#define STC_RESULTS_GYRO_Z_MASK    0x0020
+#define STC_RESULTS_ST_STATUS_MASK 0x00C0
+#define STC_RESULTS_ACCEL_SC_MASK  0x0300
+#define STC_RESULTS_GYRO_SC_MASK   0x0C00
+
+//EDMP_STC_CONFIGPARAMS
+#define SELFTESTCAL_INIT_EN_MASK   0x0001
+#define SELFTESTCAL_INIT_EN        0x0001
+#define SELFTEST_ACCEL_EN_MASK     0x0002
+#define SELFTEST_ACCEL_EN          0x0002
+#define SELFTEST_GYRO_EN_MASK      0x0004
+#define SELFTEST_GYRO_EN           0x0004
+#define SELFTEST_AVERAGE_TIME_MASK 0x0380
+#define SELFTEST_ACCEL_THRESH_MASK 0x1C00
+#define SELFTEST_GYRO_THRESH_MASK  0xE000
+
+/* Register Bank IPREG_TOP1 */
+#define REG_EDMP_PRGRM_IRQ0_0			0x4F + IPREG_TOP1_BASE
+#define REG_EDMP_PRGRM_IRQ0_1			0x50 + IPREG_TOP1_BASE
+#define REG_EDMP_PRGRM_IRQ1_0			0x51 + IPREG_TOP1_BASE
+#define REG_EDMP_PRGRM_IRQ1_1			0x52 + IPREG_TOP1_BASE
+#define REG_EDMP_PRGRM_IRQ2_0			0x53 + IPREG_TOP1_BASE
+#define REG_EDMP_PRGRM_IRQ2_1			0x54 + IPREG_TOP1_BASE
+#define REG_EDMP_SP_START_ADDR 			0X55 + IPREG_TOP1_BASE
+
+/* EDMP defines */
+#define EDMP_RAM_BASE	0x0
+#define EDMP_ROM_BASE	0x4000
+#define EDMP_ROM_DATA_SIZE	0x4C0
+#define APEX_FEATURE_STACK_END	0x500
+#define EDMP_RAM_FEATURE_PRGM_RAM_BASE	0x500
+#define EDMP_HOST_INT_TAP_DET_POS	0x0
+#define EDMP_HOST_INT_HIGHG_DET_POS	0x1
+#define EDMP_HOST_INT_LOWG_DET_POS	0x2
+#define EDMP_HOST_INT_TILT_DET_POS	0x3
+#define EDMP_HOST_INT_STEP_CNT_OVFL_DET_POS	0x4
+#define EDMP_HOST_INT_STEP_DET_POS	0x5
+#define EDMP_HOST_INT_FF_DET_POS	0x6
+#define EDMP_HOST_INT_R2W_WAKE_DET_POS	0x7
+#define EDMP_HOST_INT_B2S_DET_POS	0x7
+#define EDMP_HOST_INT_REVB2S_DET_POS	0x0
+#define EDMP_HOST_INT_R2W_SLEEP_DET_POS	0x0
+#define EDMP_HOST_INT_SMD_DET_POS	0x1
+#define EDMP_HOST_INT_SELF_TEST_DONE_POS	0x2
+#define EDMP_HOST_INT_SA_DONE_POS	0x4
+#define EDMP_HOST_INT_BASIC_SMD_DET_POS	0x5
+#define RAM_PATCHES_PRGM_RAM_BASE	0x500
 
 /* User Bank IPREG_SYS1 - Gyro-related config settings */
 #define REG_IPREG_SYS1_OFFSET			0xA400
