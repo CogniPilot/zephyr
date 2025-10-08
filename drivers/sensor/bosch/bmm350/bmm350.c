@@ -955,15 +955,76 @@ static int pm_action(const struct device *dev, enum pm_device_action action)
 }
 #endif
 
-static int self_test_config(const struct device *dev, struct bmm350_init_self_test_values *init_self_test_values, uint8_t st_cmd, uint8_t pmu_cmd)
+static int self_test_validate(struct sensor_value self_test_data, struct sensor_value init_self_test_data, int positive_axis)
+{
+	//Internal generated magnetic field at self test is 130uT. Fetched data in this library is converted to Gauss. 1 Gauss = 100uT
+	const struct sensor_value internal_magn_field_gauss = {1, 300000};
+	struct sensor_value result;
+	int err = 0;
+
+	//Compute difference value after test - value before test
+	result.val1 = self_test_data.val1 - init_self_test_data.val1;
+	result.val2 = self_test_data.val2 - init_self_test_data.val2;
+
+	//Do some fixed point compensation
+	if (result.val2 >= 1000000)
+	{
+		result.val1 += 1;
+		result.val2 -= 1000000;
+	}
+	else if (result.val2 <= -1000000)
+	{
+		result.val1 -= 1;
+		result.val2 += 1000000;
+	}
+
+	printk("Self-test value: %d.%06d - %d.%06d = %d.%06dGs;\tinternal_magn_field: %d.%06dGs\n", 
+					self_test_data.val1, self_test_data.val2,
+					init_self_test_data.val1, init_self_test_data.val2,
+					result.val1, result.val2,
+					internal_magn_field_gauss.val1, internal_magn_field_gauss.val2);
+	
+	//Axis is positive
+	if (positive_axis)
+	{
+		//Check if result is lower than the positive specified magnetic field
+		if ((result.val1 < internal_magn_field_gauss.val1) || ((result.val1 == internal_magn_field_gauss.val1) && (result.val2 < internal_magn_field_gauss.val2)))
+		{
+			//Test failed
+			err = -EIO;
+
+			printk("Failed self-test -> %d.%06d - %d.%06d = %d.%06dGs < %d.%06dGs\n", 
+					self_test_data.val1, self_test_data.val2,
+					init_self_test_data.val1, init_self_test_data.val2,
+					result.val1, result.val2,
+					internal_magn_field_gauss.val1, internal_magn_field_gauss.val2);
+		}
+	}
+	//Axis is negative
+	else
+	{
+		//Check if result is higher than the negative specified magnetic field
+		if ((result.val1 > -internal_magn_field_gauss.val1) || ((result.val1 == -internal_magn_field_gauss.val1) && (result.val2 > -internal_magn_field_gauss.val2)))
+		{
+			//Test failed
+			err = -EIO;
+
+			printk("Failed self-test -> %d.%06d - %d.%06d = %d.%06dGs > %d.%06dGs\n", 
+					self_test_data.val1, self_test_data.val2,
+					init_self_test_data.val1, init_self_test_data.val2,
+					result.val1, result.val2,
+					-internal_magn_field_gauss.val1, -internal_magn_field_gauss.val2);
+		}
+	}
+	
+	return err;
+}
+
+static int self_test_config(const struct device *dev, struct sensor_value init_self_test_value, uint8_t st_cmd)
 {
 	int err;
 	struct sensor_value out_ust[4];
     struct bmm350_pmu_cmd_status_0 pmu_cmd_stat_0 = { 0 };
-    static float out_ustxh = 0.0, out_ustxl = 0.0, out_ustyh = 0.0, out_ustyl = 0.0;
-
-	//Internal generated magnetic field at self test is 130uT. Fetched data in this library is converted to Gauss. 1 Gauss = 100uT
-	const float internal_magn_field_gauss = 1.30; 
 
 	//Enable self test with given command: 0x0d, 0x0b, 0x15, 0x13
 	err = bmm350_reg_write(dev, BMM350_REG_TMR_SELFTEST_USER, st_cmd);
@@ -1008,16 +1069,7 @@ static int self_test_config(const struct device *dev, struct bmm350_init_self_te
 				printk("Failed getting XY data");
 			}
 
-			out_ustxh = sensor_value_to_float(&out_ust[0]);
-
-			printf("pos_x: %f - %f = %f\n", (double) out_ustxh, (double) init_self_test_values->mag_x, (double) (out_ustxh - init_self_test_values->mag_x));
-
-			if ((out_ustxh - init_self_test_values->mag_x) <= internal_magn_field_gauss)
-			{
-				printf("Failed test!\n");
-				err = -EIO;
-			}
-
+			err = self_test_validate(out_ust[0], init_self_test_value, true);
 			break;
 		
 		case BMM350_SELF_TEST_NEG_X:
@@ -1027,16 +1079,7 @@ static int self_test_config(const struct device *dev, struct bmm350_init_self_te
 				printk("Failed getting XY data");
 			}
 
-			out_ustxl = sensor_value_to_float(&out_ust[1]);
-
-			printf("neg_x: %f - %f = %f\n", (double) out_ustxl, (double) init_self_test_values->mag_x, (double) (out_ustxl - init_self_test_values->mag_x));
-
-			if ((out_ustxl - init_self_test_values->mag_x) >= -internal_magn_field_gauss)
-			{
-				printf("Failed test!\n");
-				err = -EIO;
-			}
-
+			err = self_test_validate(out_ust[1], init_self_test_value, false);
 			break;
 
 		case BMM350_SELF_TEST_POS_Y:
@@ -1046,16 +1089,7 @@ static int self_test_config(const struct device *dev, struct bmm350_init_self_te
 				printk("Failed getting XY data");
 			}
 
-			out_ustyh = sensor_value_to_float(&out_ust[2]);
-
-			printf("pos_y: %f - %f = %f\n", (double) out_ustyh, (double) init_self_test_values->mag_y, (double) (out_ustyh - init_self_test_values->mag_y));
-
-			if ((out_ustyh - init_self_test_values->mag_y) <= internal_magn_field_gauss)
-			{
-				printf("Failed test!\n");
-				err = -EIO;
-			}
-
+			err = self_test_validate(out_ust[2], init_self_test_value, true);
 			break;
 
 		case BMM350_SELF_TEST_NEG_Y:
@@ -1065,16 +1099,7 @@ static int self_test_config(const struct device *dev, struct bmm350_init_self_te
 				printk("Failed getting XY data");
 			}
 
-			out_ustyl = sensor_value_to_float(&out_ust[3]);
-
-			printf("neg_y: %f - %f = %f\n", (double) out_ustyl, (double) init_self_test_values->mag_y, (double) (out_ustyl - init_self_test_values->mag_y));
-
-			if ((out_ustyl - init_self_test_values->mag_y) >= -internal_magn_field_gauss)
-			{
-				printf("Failed test!\n");
-				err = -EIO;
-			}
-			
+			err = self_test_validate(out_ust[3], init_self_test_value, false);
 			break;
 		
 		default:
@@ -1090,8 +1115,9 @@ static int self_test_config(const struct device *dev, struct bmm350_init_self_te
 static int self_test_xy_axis(const struct device *dev)
 {
 	struct bmm350_pmu_cmd_status_0 pmu_cmd_stat_0 = { 0 };
-	struct bmm350_init_self_test_values init_self_test_values = {0.0, 0.0};
-	struct sensor_value mag[2];
+	// struct bmm350_init_self_test_values init_self_test_values = {0.0, 0.0};
+	struct sensor_value bmm350_init_self_test_values[2];
+	// struct sensor_value mag[2];
 	int err;
 
 	//Set power mode to forced mode with fast CRST recharge
@@ -1120,25 +1146,22 @@ static int self_test_xy_axis(const struct device *dev)
 		}
 
 		//Get initial X and Y axis data before self-test
-		err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &mag[0]);
-		err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &mag[1]);
+		err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_X, &bmm350_init_self_test_values[0]);
+		err = bmm350_channel_get(dev, SENSOR_CHAN_MAGN_Y, &bmm350_init_self_test_values[1]);
 		if (err != 0)
 		{
 			printk("Failed getting XY data");
 		}
-
-		init_self_test_values.mag_x = sensor_value_to_float(&mag[0]);
-		init_self_test_values.mag_y = sensor_value_to_float(&mag[1]);
 	}
 
 	//Run self-test for each axis positive and negative
-	if (self_test_config(dev, &init_self_test_values, BMM350_SELF_TEST_POS_X, BMM350_PMU_CMD_FM_FAST) != 0)
+	if (self_test_config(dev, bmm350_init_self_test_values[0], BMM350_SELF_TEST_POS_X) != 0)
 		return -EIO;
-	if (self_test_config(dev, &init_self_test_values, BMM350_SELF_TEST_NEG_X, BMM350_PMU_CMD_FM_FAST) != 0)
+	if (self_test_config(dev, bmm350_init_self_test_values[0], BMM350_SELF_TEST_NEG_X) != 0)
 		return -EIO;
-	if (self_test_config(dev, &init_self_test_values, BMM350_SELF_TEST_POS_Y, BMM350_PMU_CMD_FM_FAST) != 0)
+	if (self_test_config(dev, bmm350_init_self_test_values[1], BMM350_SELF_TEST_POS_Y) != 0)
 		return -EIO;
-	if (self_test_config(dev, &init_self_test_values, BMM350_SELF_TEST_NEG_Y, BMM350_PMU_CMD_FM_FAST) != 0)
+	if (self_test_config(dev, bmm350_init_self_test_values[1], BMM350_SELF_TEST_NEG_Y) != 0)
 		return -EIO;
 
 	return err;
@@ -1265,8 +1288,6 @@ static int bmm350_perform_self_test(const struct device *dev)
 	if (err != 0) {
 		printk("%s: set power mode failed", dev->name);
 	}
-
-	k_msleep(30);
 
 	return result;
 }
