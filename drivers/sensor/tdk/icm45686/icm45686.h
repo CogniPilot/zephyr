@@ -51,6 +51,9 @@ typedef enum {
 
 /** Self-Test parameters */
 typedef struct {
+	/* Init self-test parameters if set */
+	uint8_t stc_init_en;
+
 	/** If set, enable accel self-test */
 	uint8_t accel_en;
 

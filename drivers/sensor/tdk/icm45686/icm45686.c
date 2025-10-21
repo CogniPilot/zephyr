@@ -29,24 +29,58 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ICM45686, CONFIG_SENSOR_LOG_LEVEL);
 
-#define EDMP_ROM_START_ADDR_IRQ0 EDMP_ROM_BASE
-#define EDMP_ROM_START_ADDR_IRQ1 (EDMP_ROM_BASE + 0x04)
-#define EDMP_ROM_START_ADDR_IRQ2 (EDMP_ROM_BASE + 0x08)
+static int set_reg8(const struct device *dev, uint8_t reg, uint8_t val) __attribute__((unused));
+static int clear_reg8(const struct device *dev, uint8_t reg, uint8_t val) __attribute__((unused));
+static int write_mreg(const struct device *dev, uint32_t reg, const uint8_t *buf, uint32_t len) __attribute__((unused));
+static int read_mreg(const struct device *dev, uint32_t reg, uint8_t *buf, uint32_t len) __attribute__((unused));
+static int icm45686_perform_selftest(const struct device *dev) __attribute__((unused));
 
 static inline int reg_write(const struct device *dev, uint8_t reg, uint8_t val)
 {
+	printf("write reg 0x%x: 0x%x\n", reg, val);
 	return icm45686_bus_write(dev, reg, &val, 1);
 }
 
 static inline int reg_read(const struct device *dev, uint8_t reg, uint8_t *val)
 {
-	return icm45686_bus_read(dev, reg, val, 1);
+	int err = 0;
+
+	err |= icm45686_bus_read(dev, reg, val, 1);
+	// printf("read reg 0x%x: 0x%x\n", reg, *val);
+
+	return err;
 }
 
-static int write_mreg(const struct device *dev, uint32_t reg, uint32_t len, const uint8_t *buf)
+static int set_reg8(const struct device *dev, uint8_t reg, uint8_t val)
+{
+	int err = 0;
+	int8_t buf;
+
+	err |= icm45686_bus_read(dev, reg, &buf, 1);
+	buf |= val;
+	err |= icm45686_bus_write(dev, reg, &buf, 1);
+
+	return err;
+}
+
+static int clear_reg8(const struct device *dev, uint8_t reg, uint8_t val)
+{
+	int err = 0;
+	int8_t buf;
+
+	err |= icm45686_bus_read(dev, reg, &buf, 1);
+	buf &= ~val;
+	err |= icm45686_bus_write(dev, reg, &buf, 1);
+
+	return err;
+}
+
+static int write_mreg(const struct device *dev, uint32_t reg, const uint8_t *buf, uint32_t len)
 {
 	uint8_t data[3];
 	int err = 0;
+
+	// uint8_t read_val;
 
 	/* First two bytes are the address where we want to write */
 	data[0] = (reg & 0xFF00) >> 8;
@@ -54,21 +88,50 @@ static int write_mreg(const struct device *dev, uint32_t reg, uint32_t len, cons
 	/* 3rd byte is the first data to write*/
 	data[2] = buf[0];
 
+	// printf("Writing reg: %x%x\n", data[0], data[1]);
+
 	/* Burst write address and first byte */
 	k_usleep(4);	//Sleep 4us
 	err |= icm45686_bus_write(dev, REG_IREG_ADDR_15_8, data, 3);
+	// err |= icm45686_bus_read(dev, REG_MISC2, &read_val, 1);
+	// printf("REG_MISC2: %x\n", read_val);
 	k_usleep(4);	//Sleep 4us
+	// printf("REG_MISC2: %x\n", read_val);
+	// printf("Wrote to reg: %x\n", data[2]);
+	printf("write reg 0x%x%x: 0x%x\n", data[0], data[1], data[2]);
 
 	for (int i = 1; i < len; i++)
 	{
-		err |= icm45686_bus_write(dev, REG_IREG_DATA, buf[i], 1);
+		err |= icm45686_bus_write(dev, REG_IREG_DATA, &buf[i], 1);
+		// printf("Wrote to reg: %x\n", buf[i]);
+		printf("write reg 0x%x%x+%d: 0x%x\n", data[0], data[1], i, buf[i]);
+		k_usleep(4);
 	}
 	
+	return err;
 }
 
-static int read_mreg(const struct device *dev, uint32_t reg, uint32_t len, const uint8_t *buf)
+static int read_mreg(const struct device *dev, uint32_t reg, uint8_t *buf, uint32_t len)
 {
-	
+	uint8_t data[2];
+	int err = 0;
+
+	/* Write address first */
+	data[0] = (reg & 0xFF00) >> 8;
+	data[1] = reg & 0xFF;
+	// printf("reading reg: %x%x\n", data[0], data[1]);
+	k_usleep(4);
+	err |= icm45686_bus_write(dev, REG_IREG_ADDR_15_8, data, 2);
+	k_usleep(10);
+
+	/* Read all bytes one by one */
+	for (int i = 0; i < len; i++) {
+		err |= icm45686_bus_read(dev, REG_IREG_DATA, &buf[i], 1);
+		// printf("read value from 0x%x%x: 0x%x\n", data[0], data[1], buf[i]);
+		k_usleep(10);
+	}
+
+	return err;
 }
 
 static int icm45686_sample_fetch(const struct device *dev,
@@ -281,9 +344,44 @@ static int icm45686_perform_selftest(const struct device *dev)
 	inv_imu_selftest_parameters_t st_params;
 	uint32_t tmp_stc_params = 0;
 	uint8_t read_val;
+	uint32_t timeout_us = 3000000; /* 3 seconds */
+	int err = 0;
+
+	int8_t intf_config1_ovrd;
+	int8_t drive_config0;
+
+	uint8_t stc_status_reg, stc_status, gyro_accel_status;
 
 	/* Do soft-reset */
-	//Do soft-reset? and wait 10ms
+	//Save INTF_CONFIG1_OVRD register
+	reg_read(dev, REG_INTF_CONFIG1_OVRD, &intf_config1_ovrd);
+
+	//Save DRIVE_CONFIG0 register
+	reg_read(dev, REG_DRIVE_CONFIG0, &drive_config0);
+
+	//Trigger soft-reset and do not change IREG_DONE bit
+	// reg_write(dev, REG_MISC2, 0x3);
+	set_reg8(dev, REG_MISC2, 0x2);
+
+	//Wait 1ms for soft reset to be effective
+	k_usleep(1000); 
+
+	//Restore INTF_CONFIG1_OVRD register
+	reg_write(dev, REG_INTF_CONFIG1_OVRD, intf_config1_ovrd);
+
+	//Restore DRIVE_CONFIG0 register
+	reg_write(dev, REG_DRIVE_CONFIG0, drive_config0);
+
+	err |= reg_read(dev, REG_INT1_STATUS0, &read_val);
+	//Check if RESET_DONE is set
+	if (!((read_val & 0x80) >> 7))
+	{
+		//Return error if RESET_DONE is not set
+		return -1;
+	}
+	
+	//Sleep 10ms
+	k_usleep(10000);
 
 	/* Configure start-address for EDMP */
 	//Write start address of 3 EDMP IRQ handlers in EDMP_PRGRM_IRQ0_0
@@ -295,7 +393,11 @@ static int icm45686_perform_selftest(const struct device *dev)
 				EDMP_ROM_START_ADDR_IRQ2 & 0xff,
 				(EDMP_ROM_START_ADDR_IRQ2 & 0xff00) >> 8};
 
-	write_mreg(dev, REG_EDMP_PRGRM_IRQ0_0, sizeof(start_addr), &start_addr[0]);
+	err |= write_mreg(dev, REG_EDMP_PRGRM_IRQ0_0, &start_addr[0], sizeof(start_addr));
+	err |= read_mreg(dev, REG_EDMP_PRGRM_IRQ0_0, &read_val, 1);
+	printf("REG_EDMP_PRGRM_IRQ0_0: %x\n", read_val);
+	err |= read_mreg(dev, REG_EDMP_PRGRM_IRQ0_1, &read_val, 1);
+	printf("REG_EDMP_PRGRM_IRQ0_1: %x\n", read_val);
 
 	// reg_write(dev, REG_EDMP_PRGRM_IRQ0_0, (EDMP_ROM_START_ADDR_IRQ0 & 0xff));
 	// reg_write(dev, REG_EDMP_PRGRM_IRQ0_1, ((EDMP_ROM_START_ADDR_IRQ0 & 0xff00) >> 8));
@@ -307,10 +409,33 @@ static int icm45686_perform_selftest(const struct device *dev)
 	//Write stack pointer start addres to EDMP_SP_START_ADDR
 	// /* Only 8 MSB of SP address is written to register */
 	//uint8_t stack_addr = (uint8_t)(APEX_FEATURE_STACK_END >> 8);
-	reg_write(dev, REG_EDMP_SP_START_ADDR, (APEX_FEATURE_STACK_END >> 8));
+	err |= write_mreg(dev, REG_EDMP_SP_START_ADDR, (uint8_t *)(APEX_FEATURE_STACK_END >> 8), 1);
+	err |= read_mreg(dev, REG_EDMP_SP_START_ADDR, &read_val, 1);
+	printf("REG_EDMP_SP_START_ADDR: %x\n", read_val);
+
+
+	//Initialize buffer pointers
+	err |= reg_read(dev, REG_APEX_BUFFER_MGMT, &read_val);
+	printf("REG_APEX_BUFFER_MGMT: %x\n", read_val);
+	read_val |= 0x8;	//Set host reads buffer 0
+	read_val &= ~0x3;	//Set eDMP write to buffer 0
+	err |= reg_write(dev, REG_APEX_BUFFER_MGMT, read_val);
+	err |= reg_read(dev, REG_APEX_BUFFER_MGMT, &read_val);
+	printf("REG_APEX_BUFFER_MGMT: %x\n", read_val);
+
+	err |= read_mreg(dev, REG_FIFO_SRAM_SLEEP, &read_val, 1);
+	printf("REG_FIFO_SRAM_SLEEP: %x\n", read_val);
 
 	/* Set self-test parameters */
+	//Power up SRAMd
+	err |= read_mreg(dev, REG_FIFO_SRAM_SLEEP, &read_val, 1);
+	read_val |= 0x3;
+	err |= write_mreg(dev, REG_FIFO_SRAM_SLEEP, &read_val, 1);
+	err |= read_mreg(dev, REG_FIFO_SRAM_SLEEP, &read_val, 1);
+	printf("REG_FIFO_SRAM_SLEEP: %x\n", read_val);
+
 	//Set self-test parameters
+	st_params.stc_init_en 		= SELFTESTCAL_INIT_EN;
 	st_params.accel_en 			= SELFTEST_ACCEL_EN;
 	st_params.gyro_en 			= SELFTEST_GYRO_EN;
 	st_params.avg_time 			= SELFTEST_AVG_TIME_320_MS;
@@ -318,79 +443,241 @@ static int icm45686_perform_selftest(const struct device *dev)
 	st_params.gyro_limit 		= SELFTEST_GYRO_THRESHOLD_50_PERCENT;
 	st_params.patch_settings 	= 0;
 
+	// init_en = (st_params->accel_en || st_params->gyro_en);
+	// tmp_stc_params |= (init_en ? SELFTESTCAL_INIT_EN : SELFTESTCAL_INIT_DIS);
+	// tmp_stc_params |= (st_params->accel_en ? SELFTEST_ACCEL_EN : SELFTEST_ACCEL_DIS);
+	// tmp_stc_params |= (st_params->gyro_en ? SELFTEST_GYRO_EN : SELFTEST_GYRO_DIS);
+	// tmp_stc_params |= (uint32_t)(st_params->accel_limit & SELFTEST_ACCEL_THRESH_MASK);
+	// tmp_stc_params |= (uint32_t)(st_params->gyro_limit & SELFTEST_GYRO_THRESH_MASK);
+	// tmp_stc_params |= (uint32_t)(st_params->avg_time & SELFTEST_AVERAGE_TIME_MASK);
+
+	//Set self-test parameters
+	tmp_stc_params = st_params.stc_init_en | st_params.accel_en | st_params.gyro_en | st_params.avg_time | st_params.accel_limit | st_params.gyro_limit;
+	
+	err |= read_mreg(dev, REG_IMEM_SRAM_REG_56, &read_val, 1);
+	printf("first read REG_IMEM_SRAM_REG_56: %x\n", read_val);
+
 	//Write self-test parameters to registers
-	tmp_stc_params = st_params.accel_en | st_params.gyro_en | st_params.avg_time | st_params.accel_limit | st_params.gyro_limit | st_params.patch_settings;
+	err |= write_mreg(dev, REG_IMEM_SRAM_REG_56, (uint8_t *)&tmp_stc_params, 2);
 
-	//Set register to indirectly write to SRAM
-	reg_write(dev, REG_IREG_ADDR_7_0, REG_IMEM_SRAM_REG_56 & 0xff);
-	reg_write(dev, REG_IREG_ADDR_15_8, (REG_IMEM_SRAM_REG_56 & 0xff00) >> 8);
+	err |= read_mreg(dev, REG_IMEM_SRAM_REG_56, &read_val, 1);
+	printf("REG_IMEM_SRAM_REG_56: %x\n", read_val);
 
-	//Set data to write to SRAM register
-	reg_write(dev, REG_IREG_DATA, tmp_stc_params & 0xff);
-
-	//Sleep 4us
-	k_usleep(4);
-
-	//Write next bit of data. The register address will increment now so we set REG_IMEM_SRAM_REG_57
-	reg_write(dev, REG_IREG_DATA, (tmp_stc_params & 0xff00) >> 8);
-
-	//Sleep 4us
-	k_usleep(4);
+	err |= read_mreg(dev, REG_IMEM_SRAM_REG_57, &read_val, 1);
+	printf("REG_IMEM_SRAM_REG_57: %x\n", read_val);
 
 	//Disable debug at self-test
-	//Set register to indirectly write to SRAM
-	reg_write(dev, REG_IREG_ADDR_7_0, REG_IMEM_SRAM_REG_64 & 0xff);
-	reg_write(dev, REG_IREG_ADDR_15_8, (REG_IMEM_SRAM_REG_64 & 0xff00) >> 8);
-
-	//Disable debug
-	reg_write(dev, REG_IREG_DATA, 0);
-
-	//Sleep 4us
-	k_usleep(4);
+	uint8_t debug_en = 0;
+	err |= write_mreg(dev, REG_IMEM_SRAM_REG_64, (uint8_t *)&debug_en, 1);
 
 	//Set patch settings
-	//Set register to indirectly write to SRAM
-	reg_write(dev, REG_IREG_ADDR_7_0, REG_IMEM_SRAM_STC_PATCH_EN & 0xff);
-	reg_write(dev, REG_IREG_ADDR_15_8, (REG_IMEM_SRAM_STC_PATCH_EN & 0xff00) >> 8);
+	err |= write_mreg(dev, REG_IMEM_SRAM_STC_PATCH_EN, (uint8_t *)&(st_params.patch_settings), 1);
 
-	//Disable patches execution in SRAM
-	reg_write(dev, REG_IREG_DATA, st_params.patch_settings);
-
-	//Sleep 4us
-	k_usleep(4);
+	err |= read_mreg(dev, REG_IMEM_SRAM_STC_PATCH_EN, &read_val, 1);
+	printf("REG_IMEM_SRAM_STC_PATCH_EN: %x\n", read_val);
 
 	/* Run internal self-test */
 	//Read Host_MSG and only set the testopenable bit
-	reg_read(dev, REG_HOST_MSG, &read_val);
+	err |= reg_read(dev, REG_HOST_MSG, &read_val);
 	read_val |= 0x1; 	//Enable test operation
-	reg_write(dev, REG_HOST_MSG, read_val);
+	err |= reg_write(dev, REG_HOST_MSG, read_val);
+	err |= reg_read(dev, REG_HOST_MSG, &read_val);
+	printf("REG_HOST_MSG: %x\n", read_val);
+
+	//Enable all self-tests
+	// err |= read_mreg(dev, REG_SELFTEST, &read_val, 1);
+	// read_val |= 0x3f;	//Enable all gyro and accel self-tests
+	// err |= write_mreg(dev, REG_SELFTEST, &read_val, 1);
+	// err |= read_mreg(dev, REG_SELFTEST, &read_val, 1);
+	// printf("REG_SELFTEST: %x\n", read_val);
 
 	//Enable self-test interrupt generation in APEX_CONFIG1 register
-	reg_read(dev, REG_INT_APEX_CONFIG1, &read_val);
+	err |= reg_read(dev, REG_INT_APEX_CONFIG1, &read_val);
 	read_val &= ~0x4; 	//Enable interrupt generation when self-test is done
-	reg_write(dev, REG_INT_APEX_CONFIG1, read_val);
+	read_val |= 0x13;	//Disable all other interrupts
+	err |= reg_write(dev, REG_INT_APEX_CONFIG1, read_val);
+	err |= reg_read(dev, REG_INT_APEX_CONFIG1, &read_val);
+	printf("REG_INT_APEX_CONFIG1: %x\n", read_val);
+
+	// err |= reg_read(dev, REG_INT_APEX_CONFIG0, &read_val);
+	// read_val |= 0xff;	//Disable all other interrupts
+	// err |= reg_write(dev, REG_INT_APEX_CONFIG0, read_val);
+	// err |= reg_read(dev, REG_INT_APEX_CONFIG0, &read_val);
+	// printf("REG_INT_APEX_CONFIG0: %x\n", read_val);
 
 	//Disable the eDMP to be run once when IRQ2 is triggered by setting the EDMP_ON_DEMAND_EN bit.
-	//STATUS_MASK_PIN_16_23 &= ~0x20
+	err |= read_mreg(dev, REG_STATUS_MASK_PIN_16_23, &read_val, 1);
+	read_val &= ~0x20;	//Clear INT_ON_DEMAND_PIN_2_DIS
+	err |= write_mreg(dev, REG_STATUS_MASK_PIN_16_23, &read_val, 1);
+	err |= read_mreg(dev, REG_STATUS_MASK_PIN_16_23, &read_val, 1);
+	printf("REG_STATUS_MASK_PIN_16_23: %x\n", read_val);
 
+	// err |= read_mreg(dev, REG_STATUS_MASK_PIN_0_7, &read_val, 1);
+	// // read_val |= 0x20;	//Set INT_ON_DEMAND_PIN_0_DIS
+	// read_val &= ~(0x4 | 0x20);	//Clear bits other than reserved
+	// err |= write_mreg(dev, REG_STATUS_MASK_PIN_0_7, &read_val, 1);
+	err |= read_mreg(dev, REG_STATUS_MASK_PIN_0_7, &read_val, 1);
+	printf("REG_STATUS_MASK_PIN_0_7: %x\n", read_val);
+
+	// err |= read_mreg(dev, REG_STATUS_MASK_PIN_8_15, &read_val, 1);
+	// read_val &= ~(0x1 | 0x8 | 0x20);	//Clear bits other than reserved
+	// err |= write_mreg(dev, REG_STATUS_MASK_PIN_8_15, &read_val, 1);
+	err |= read_mreg(dev, REG_STATUS_MASK_PIN_8_15, &read_val, 1);
+	printf("REG_STATUS_MASK_PIN_8_15: %x\n", read_val);
 
 	//Enable EDMP in EDMP_APEX_EN1 register
+	err |= reg_read(dev, REG_EDMP_APEX_EN1, &read_val);
+	read_val |= 0x40;	//Enable EDMP
+	err |= reg_write(dev, REG_EDMP_APEX_EN1, read_val);
+	err |= reg_read(dev, REG_EDMP_APEX_EN1, &read_val);
+	printf("REG_EDMP_APEX_EN1: %x\n", read_val);
 
 	//Run EDMP on demand by setting it in Host_MSG register
+	err |= reg_read(dev, REG_HOST_MSG, &read_val);
+	read_val |= 0x20; 	//Enable EDMP on demand
+	err |= reg_write(dev, REG_HOST_MSG, read_val);
+	err |= reg_read(dev, REG_HOST_MSG, &read_val);
+	printf("REG_HOST_MSG: %x\n", read_val);
+
+	err |= read_mreg(dev, REG_IPREG_MISC, &read_val, 1);
+	if ((read_val & 0x2) >> 1)
+	{
+		printf("eDMP is idle\n");
+	}
+	else
+	{
+		printf("eDMP is busy\n");
+	}	
+
+	// read_val = 0;
+	// write_mreg(dev, REG_IMEM_SRAM_REG_68, &read_val, 1);
+	// read_mreg(dev, REG_IMEM_SRAM_REG_68, &stc_status_reg, 1);
+	// printf("stc_status_reg: %x\n", stc_status_reg);
+
+	k_usleep(200);	//Wait 200us
 
 	//Run a while loop to wait for the self-test done interrupt in apex_status1 register
 	//Every loop wait 100us. Return error after timeout of 100 loops (10ms)
+	while (1) {
+		uint8_t apex_status1_reg = 0;
+		err |= reg_read(dev, REG_INT_APEX_STATUS1, &apex_status1_reg);
+
+		// if (apex_status1_reg > 0)
+		// {
+		// 	printf("REG_INT_APEX_STATUS1: %x\t", apex_status1_reg);
+		// }
+
+		// err |= read_mreg(dev, REG_IPREG_MISC, &read_val, 1);
+		// if (!((read_val & 0x2) >> 1))
+		// {
+		// 	printf("eDMP is busy\t");
+		// }
+
+		//If 
+		if ((apex_status1_reg & 0x4) >> 2)
+		{
+			printf("got interrupt!\n");
+			break;
+		}
+
+		k_usleep(100);
+		timeout_us -= 100;
+
+		if (timeout_us <= 0)
+		{
+			printf("REG_INT_APEX_STATUS1: %x\n", apex_status1_reg);
+
+			// read_mreg(dev, REG_STATUS_MASK_PIN_0_7, &read_val, 1);
+			// printf("REG_STATUS_MASK_PIN_0_7: %x\n", read_val);
+
+			// read_mreg(dev, REG_STATUS_MASK_PIN_8_15, &read_val, 1);
+			// printf("REG_STATUS_MASK_PIN_8_15: %x\n", read_val);
+
+			// read_mreg(dev, REG_STATUS_MASK_PIN_16_23, &read_val, 1);
+			// printf("REG_STATUS_MASK_PIN_16_23: %x\n", read_val);
+
+			// read_mreg(dev, REG_ISR_0_7, &read_val, 1);
+			// printf("REG_ISR_0_7: %x\n", read_val);
+
+			// read_mreg(dev, REG_ISR_8_15, &read_val, 1);
+			// printf("REG_ISR_8_15: %x\n", read_val);
+
+			// read_mreg(dev, REG_ISR_16_23, &read_val, 1);
+			// printf("REG_ISR_16_23: %x\n", read_val);
+
+			read_mreg(dev, REG_IMEM_SRAM_REG_68, &stc_status_reg, 1);
+			printf("stc_status_reg: %x\n", stc_status_reg);
+			// return -1;
+			break;
+		}
+	}
 
 	//Disable self-test interrupt generation in APEX_CONFIG1 register
+	reg_read(dev, REG_INT_APEX_CONFIG1, &read_val);
+	read_val |= 0x4;	//Disable interrupt generation when self-test is done
+	reg_write(dev, REG_INT_APEX_CONFIG1, read_val);
 
 	/* Get self-test output */
 	//Read ST_status from IMEM_SRAM_REG_68
+	read_mreg(dev, REG_IMEM_SRAM_REG_68, &stc_status_reg, 1);
 
-	//Check if ST_STATUS == 0 -> Done
+	printf("stc_status_reg: %x\n", stc_status_reg);
 
-	//Check if gyro and accel axis passed test
+	stc_status 			= stc_status_reg >> 6;
+	gyro_accel_status 	= stc_status_reg & 0x3f;
+
+	//Check if ST_STATUS == 0 -> Self-test done
+	if (stc_status == 0)
+	{
+		//Check if one of the tests failed
+		if (gyro_accel_status != 0x3f)
+		{
+			//Failed self-test
+			err |= -EIO;
+		}
+		
+		//Check if gyro and accel axis passed test
+		if (gyro_accel_status & 0x1)	//Accel X passed
+		{
+			printk("Accel X passed\n");
+		}
+		if (gyro_accel_status & 0x2)	//Accel Y passed
+		{
+			printk("Accel Y passed\n");
+		}
+		if (gyro_accel_status & 0x4)	//Accel Z passed
+		{
+			printk("Accel Z passed\n");
+		}
+		if (gyro_accel_status & 0x8)	//Gyro X passed
+		{
+			printk("Gyro X passed\n");
+		}
+		if (gyro_accel_status & 0x10)	//Gyro Y passed
+		{
+			printk("Gyro Y passed\n");
+		}
+		if (gyro_accel_status & 0x20)	//Gyro Z passed
+		{
+			printk("Gyro Z passed\n");
+		}
+		
+	}
+	else if (stc_status == 1)	// self-test in progress
+	{
+		//Failed test
+		err |= -EIO;
+	}
+	else	// self-test error or reserved
+	{
+		//Failed test
+		err |= -EIO;
+	}
+	
+	err = -EIO;
 
 	//Return pass or fail
+	return err;
 }
 
 static int icm45686_init(const struct device *dev)
@@ -411,13 +698,6 @@ static int icm45686_init(const struct device *dev)
 	if ((data->rtio.type == ICM45686_BUS_I2C) && !i2c_is_ready_iodev(data->rtio.iodev)) {
 		LOG_ERR("Bus is not ready");
 		return -ENODEV;
-	}
-#endif
-#if CONFIG_ICM45686_SELFTEST_EN
-	if (icm45686_perform_selftest(dev) != 0)
-	{
-		LOG_ERR("Failed self-test")
-		return -EIO;
 	}
 #endif
 
@@ -471,6 +751,18 @@ static int icm45686_init(const struct device *dev)
 			WHO_AM_I_ICM45686, read_val);
 		return -EIO;
 	}
+
+#if CONFIG_ICM45686_SELFTEST_EN
+	if (icm45686_perform_selftest(dev) != 0)
+	{
+		LOG_ERR("Failed self-test");
+		return -EIO;
+	}
+	else
+	{
+		printk("Self-test was succesfull!\n");
+	}
+#endif
 
 	/* Sensor Configuration */
 

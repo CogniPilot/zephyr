@@ -24,12 +24,12 @@
 
 /* Registers */
 /* Register Bank 0 */
-#define REG_ACCEL_DATA_X1_UI			0x00
-#define REG_ACCEL_DATA_X0_UI			0x01
-#define REG_ACCEL_DATA_Y1_UI			0x02
-#define REG_ACCEL_DATA_Y0_UI			0x03
-#define REG_ACCEL_DATA_Z1_UI			0x04
-#define REG_ACCEL_DATA_Z0_UI			0x05
+#define REG_ACCEL_DATA_X1_UI		0x00
+#define REG_ACCEL_DATA_X0_UI		0x01
+#define REG_ACCEL_DATA_Y1_UI		0x02
+#define REG_ACCEL_DATA_Y0_UI		0x03
+#define REG_ACCEL_DATA_Z1_UI		0x04
+#define REG_ACCEL_DATA_Z0_UI		0x05
 #define REG_GYRO_DATA_X1_UI			0x06
 #define REG_GYRO_DATA_X0_UI			0x07
 #define REG_GYRO_DATA_Y1_UI			0x08
@@ -55,6 +55,10 @@
 #define REG_FIFO_CONFIG2			0x20
 #define REG_FIFO_CONFIG3			0x21
 #define REG_FIFO_CONFIG4			0x22
+#define REG_EDMP_APEX_EN0 			0x29
+#define REG_EDMP_APEX_EN1 			0x2A
+#define REG_APEX_BUFFER_MGMT		0x2B
+#define REG_INTF_CONFIG1_OVRD		0x2D
 #define REG_DRIVE_CONFIG0			0x32
 #define REG_DRIVE_CONFIG1			0x33
 #define REG_INT_APEX_CONFIG0 		0x39
@@ -66,13 +70,13 @@
 #define REG_IREG_ADDR_15_8			0x7C
 #define REG_IREG_ADDR_7_0			0x7D
 #define REG_IREG_DATA				0x7E
-#define REG_MISC2				0x7F
+#define REG_MISC2					0x7F
 
 /* Register Bank IMEM_SRAM */
-#define REG_IMEM_SRAM_REG_56 		0x38 + IMEM_SRAM_BASE	//Config self-test
-#define REG_IMEM_SRAM_REG_57		0X39 + IMEM_SRAM_BASE	//Config self-test tolerance limits
-#define REG_IMEM_SRAM_REG_64		0X40 + IMEM_SRAM_BASE	//Self-test debug enable register
-#define REG_IMEM_SRAM_REG_68		0X44 + IMEM_SRAM_BASE	//Self-test status register
+#define REG_IMEM_SRAM_REG_56 		(0x38 + IMEM_SRAM_BASE)	//Config self-test
+#define REG_IMEM_SRAM_REG_57		(0X39 + IMEM_SRAM_BASE)	//Config self-test tolerance limits
+#define REG_IMEM_SRAM_REG_64		(0X40 + IMEM_SRAM_BASE)	//Self-test debug enable register
+#define REG_IMEM_SRAM_REG_68		(0X44 + IMEM_SRAM_BASE)	//Self-test status register
 
 /* stc_patch_en
  *
@@ -82,7 +86,7 @@
  * bit2: If set, enable SRAM patching for gyro self-test phase 1
  * bit3: If set, enable SRAM patching for gyro self-test phase 2
  */
-#define REG_IMEM_SRAM_STC_PATCH_EN      0x3c
+#define REG_IMEM_SRAM_STC_PATCH_EN      (0x3c + IMEM_SRAM_BASE)
 
 /* Self-test register bits */
 //EDMP_STC_RESULTS
@@ -108,17 +112,29 @@
 #define SELFTEST_GYRO_THRESH_MASK  0xE000
 
 /* Register Bank IPREG_TOP1 */
-#define REG_EDMP_PRGRM_IRQ0_0			0x4F + IPREG_TOP1_BASE
-#define REG_EDMP_PRGRM_IRQ0_1			0x50 + IPREG_TOP1_BASE
-#define REG_EDMP_PRGRM_IRQ1_0			0x51 + IPREG_TOP1_BASE
-#define REG_EDMP_PRGRM_IRQ1_1			0x52 + IPREG_TOP1_BASE
-#define REG_EDMP_PRGRM_IRQ2_0			0x53 + IPREG_TOP1_BASE
-#define REG_EDMP_PRGRM_IRQ2_1			0x54 + IPREG_TOP1_BASE
-#define REG_EDMP_SP_START_ADDR 			0X55 + IPREG_TOP1_BASE
+#define REG_EDMP_PRGRM_IRQ0_0			(0x4F + IPREG_TOP1_BASE)
+#define REG_EDMP_PRGRM_IRQ0_1			(0x50 + IPREG_TOP1_BASE)
+#define REG_EDMP_PRGRM_IRQ1_0			(0x51 + IPREG_TOP1_BASE)
+#define REG_EDMP_PRGRM_IRQ1_1			(0x52 + IPREG_TOP1_BASE)
+#define REG_EDMP_PRGRM_IRQ2_0			(0x53 + IPREG_TOP1_BASE)
+#define REG_EDMP_PRGRM_IRQ2_1			(0x54 + IPREG_TOP1_BASE)
+#define REG_EDMP_SP_START_ADDR 			(0X55 + IPREG_TOP1_BASE)
+#define REG_FIFO_SRAM_SLEEP				(0xA7 + IPREG_TOP1_BASE)
+#define REG_ISR_0_7						(0x6e + IPREG_TOP1_BASE)
+#define REG_ISR_8_15					(0x6f + IPREG_TOP1_BASE)
+#define REG_ISR_16_23					(0x70 + IPREG_TOP1_BASE)
+#define REG_STATUS_MASK_PIN_0_7			(0x71 + IPREG_TOP1_BASE)
+#define REG_STATUS_MASK_PIN_8_15		(0x72 + IPREG_TOP1_BASE)
+#define REG_STATUS_MASK_PIN_16_23		(0x73 + IPREG_TOP1_BASE)
+#define REG_SELFTEST 					(0x90 + IPREG_TOP1_BASE)
+#define REG_IPREG_MISC					(0x97 + IPREG_TOP1_BASE)
 
 /* EDMP defines */
 #define EDMP_RAM_BASE	0x0
 #define EDMP_ROM_BASE	0x4000
+#define EDMP_ROM_START_ADDR_IRQ0 EDMP_ROM_BASE
+#define EDMP_ROM_START_ADDR_IRQ1 (EDMP_ROM_BASE + 0x04)
+#define EDMP_ROM_START_ADDR_IRQ2 (EDMP_ROM_BASE + 0x08)
 #define EDMP_ROM_DATA_SIZE	0x4C0
 #define APEX_FEATURE_STACK_END	0x500
 #define EDMP_RAM_FEATURE_PRGM_RAM_BASE	0x500
