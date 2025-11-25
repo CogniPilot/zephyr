@@ -1230,6 +1230,23 @@ typedef void (*sensor_processing_callback_t)(int result, uint8_t *buf, uint32_t 
  */
 void sensor_processing_with_callback(struct rtio *ctx, sensor_processing_callback_t cb);
 
+/**
+ * @brief Helper function for common processing of sensor data with a timeout
+ *
+ * Similar to @ref sensor_processing_with_callback, but gives up when no completion
+ * event arrives within the given time. The callback is not called in that case, so
+ * the caller can restart the stream or report the failure instead of blocking.
+ *
+ * @param[in] ctx The RTIO context to wait on
+ * @param[in] cb Callback to call when data is ready for processing
+ * @param[in] timeout Time to wait for a completion event, otherwise time-out
+ *
+ * @return 0 on success
+ * @return -ETIMEDOUT if no completion event was available within @p timeout
+ */
+int sensor_processing_cb_with_timeout(struct rtio *ctx, sensor_processing_callback_t cb,
+				      k_timeout_t timeout);
+
 #endif /* defined(CONFIG_SENSOR_ASYNC_API) || defined(__DOXYGEN__) */
 
 /**
