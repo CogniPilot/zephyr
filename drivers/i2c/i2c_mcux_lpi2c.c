@@ -50,6 +50,7 @@ struct mcux_lpi2c_config {
 	void (*irq_config_func)(const struct device *dev);
 	uint32_t bitrate;
 	uint32_t bus_idle_timeout_ns;
+	k_timeout_t transfer_timeout;
 	const struct pinctrl_dev_config *pincfg;
 	struct reset_dt_spec reset;
 #ifdef CONFIG_I2C_MCUX_LPI2C_BUS_RECOVERY
@@ -112,9 +113,9 @@ static int mcux_lpi2c_configure(const struct device *dev,
 		return -EINVAL;
 	}
 
-	ret = k_sem_take(&data->lock, K_FOREVER);
+	ret = k_sem_take(&data->lock, config->transfer_timeout);
 	if (ret) {
-		return ret;
+		return -ETIMEDOUT;
 	}
 
 	LPI2C_MasterSetBaudRate(base, clock_freq, baudrate);
@@ -157,9 +158,9 @@ static int mcux_lpi2c_transfer(const struct device *dev, struct i2c_msg *msgs,
 	status_t status;
 	int ret = 0;
 
-	ret = k_sem_take(&data->lock, K_FOREVER);
+	ret = k_sem_take(&data->lock, config->transfer_timeout);
 	if (ret) {
-		return ret;
+		return -ETIMEDOUT;
 	}
 
 	(void)pm_device_runtime_get(dev);
@@ -203,7 +204,15 @@ static int mcux_lpi2c_transfer(const struct device *dev, struct i2c_msg *msgs,
 		}
 
 		/* Wait for the transfer to complete */
-		k_sem_take(&data->device_sync_sem, K_FOREVER);
+		if (k_sem_take(&data->device_sync_sem, config->transfer_timeout) != 0) {
+			LPI2C_MasterTransferAbort(base, &data->handle);
+			/* Drop a completion that lands after the timeout, so the
+			 * next transfer does not consume it or its status.
+			 */
+			k_sem_reset(&data->device_sync_sem);
+			ret = -ETIMEDOUT;
+			break;
+		}
 
 		/* Return an error if the transfer didn't complete
 		 * successfully. e.g., nak, timeout, lost arbitration
@@ -277,7 +286,10 @@ static int mcux_lpi2c_recover_bus(const struct device *dev)
 		return -EIO;
 	}
 
-	k_sem_take(&data->lock, K_FOREVER);
+	error = k_sem_take(&data->lock, config->transfer_timeout);
+	if (error != 0) {
+		return -ETIMEDOUT;
+	}
 
 	error = gpio_pin_configure_dt(&config->scl, GPIO_OUTPUT_HIGH);
 	if (error != 0) {
@@ -695,6 +707,7 @@ static DEVICE_API(i2c, mcux_lpi2c_driver_api) = {
 		.bus_idle_timeout_ns =					\
 			UTIL_AND(DT_INST_NODE_HAS_PROP(n, bus_idle_timeout),\
 				 DT_INST_PROP(n, bus_idle_timeout)),	\
+		.transfer_timeout = I2C_DT_INST_TRANSFER_TIMEOUT(n),	\
 	};								\
 									\
 	static struct mcux_lpi2c_data mcux_lpi2c_data_##n;		\

@@ -253,6 +253,7 @@ config I2C_MCUX_LPI2C
 	depends on DT_HAS_NXP_LPI2C_ENABLED
 	depends on CLOCK_CONTROL
 	select PINCTRL
+	select I2C_TRANSFER_TIMEOUT_SUPPORTED
 	help
 	  Enable the mcux LPI2C driver.
 
