@@ -31,6 +31,7 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(mcux_lpi2c);
 
+#define k_SEM_LOCK_TIMEOUT K_SECONDS(3)
 
 #include "i2c-priv.h"
 /* Wait for the duration of 12 bits to detect a NAK after a bus
@@ -112,8 +113,9 @@ static int mcux_lpi2c_configure(const struct device *dev,
 		return -EINVAL;
 	}
 
-	ret = k_sem_take(&data->lock, K_FOREVER);
+	ret = k_sem_take(&data->lock, k_SEM_LOCK_TIMEOUT);
 	if (ret) {
+		ret = -ETIMEDOUT;
 		return ret;
 	}
 
@@ -157,8 +159,9 @@ static int mcux_lpi2c_transfer(const struct device *dev, struct i2c_msg *msgs,
 	status_t status;
 	int ret = 0;
 
-	ret = k_sem_take(&data->lock, K_FOREVER);
+	ret = k_sem_take(&data->lock, k_SEM_LOCK_TIMEOUT);
 	if (ret) {
+		ret = -ETIMEDOUT;
 		return ret;
 	}
 
@@ -203,7 +206,11 @@ static int mcux_lpi2c_transfer(const struct device *dev, struct i2c_msg *msgs,
 		}
 
 		/* Wait for the transfer to complete */
-		k_sem_take(&data->device_sync_sem, K_FOREVER);
+		if (k_sem_take(&data->device_sync_sem, k_SEM_LOCK_TIMEOUT) != 0) {
+			ret = -ETIMEDOUT;
+			LPI2C_MasterTransferAbort(base, &data->handle);
+			break;
+		}
 
 		/* Return an error if the transfer didn't complete
 		 * successfully. e.g., nak, timeout, lost arbitration
@@ -277,7 +284,10 @@ static int mcux_lpi2c_recover_bus(const struct device *dev)
 		return -EIO;
 	}
 
-	k_sem_take(&data->lock, K_FOREVER);
+	error = k_sem_take(&data->lock, k_SEM_LOCK_TIMEOUT);
+	if (error != 0) {
+		return -ETIMEDOUT;
+	}
 
 	error = gpio_pin_configure_dt(&config->scl, GPIO_OUTPUT_HIGH);
 	if (error != 0) {
