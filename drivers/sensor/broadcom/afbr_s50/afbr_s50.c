@@ -218,10 +218,9 @@ static void afbr_s50_submit_streaming(const struct device *dev,
 	/** If there's an op in process, reject ignore requests */
 	if (data->rtio.iodev_sqe != NULL &&
 	    FIELD_GET(RTIO_SQE_CANCELED, data->rtio.iodev_sqe->sqe.flags) == 0) {
-		LOG_WRN("Operation in progress");
-
-		rtio_iodev_sqe_err(iodev_sqe, -EBUSY);
-		return;
+		LOG_WRN("Operation in progress. Overriding");
+		(void)Argus_StopMeasurementTimer(data->platform.argus.handle);
+		(void)Argus_Abort(data->platform.argus.handle);
 	}
 	data->rtio.iodev_sqe = iodev_sqe;
 
