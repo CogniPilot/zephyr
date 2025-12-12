@@ -14,8 +14,6 @@
 #ifndef ZEPHYR_INCLUDE_DT_BINDINGS_SENSOR_ICM4268X_H_
 #define ZEPHYR_INCLUDE_DT_BINDINGS_SENSOR_ICM4268X_H_
 
-#include "sensor_axis_align.h"
-
 /**
  * @defgroup icm4268x_interface ICM4268X
  * @ingroup sensor_interface_ext_tdk

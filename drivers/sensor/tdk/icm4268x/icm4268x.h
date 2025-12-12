@@ -16,11 +16,6 @@
 #include <stdlib.h>
 #include "icm4268x_bus.h"
 
-struct alignment {
-	int8_t index;
-	int8_t sign;
-};
-
 enum icm4268x_variant {
 	ICM4268X_VARIANT_ICM42688 = 0,
 	ICM4268X_VARIANT_ICM42686 = 1,
@@ -350,7 +345,6 @@ struct icm4268x_cfg {
 	bool interrupt1_drdy;
 	bool interrupt1_fifo_ths;
 	bool interrupt1_fifo_full;
-	struct alignment axis_align[3];
 	uint8_t pin9_function;
 	uint16_t rtc_freq;
 };
