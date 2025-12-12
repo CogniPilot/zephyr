@@ -31,6 +31,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/sensor_data_types.h>
 #include <zephyr/dsp/types.h>
+#include <zephyr/dt-bindings/sensor/sensor_axis_align.h>
 #include <zephyr/rtio/rtio.h>
 #include <zephyr/sys/iterable_sections.h>
 #include <zephyr/sys/util.h>
@@ -1571,6 +1572,90 @@ struct sensor_info {
 
 #endif /* CONFIG_SENSOR_INFO */
 
+#ifdef CONFIG_SENSOR_THREE_AXIS_REF
+
+/**
+ * @brief Used to align three-axis data to a reference frame, which comes from
+ * dts nodes with compatible "sensor-axis-align.yaml".
+ */
+struct sensor_three_axis_ref {
+	const struct device *dev;
+	struct {
+		uint8_t index; /*
+				* SENSOR_AXIS_ALIGN_DT_X,
+				* SENSOR_AXIS_ALIGN_DT_Y or
+				* SENSOR_AXIS_ALIGN_DT_Z
+				*/
+		bool inverted;
+	} axis[3];
+};
+
+#define SENSOR_THREE_AXIS_REF_INITIALIZER(_dev, _idx_0, _idx_1, _idx_2, _sign_0, _sign_1, _sign_2) \
+	{											   \
+		.dev = (_dev),									   \
+		.axis = {									   \
+			{.index = (_idx_0), .inverted = !(_sign_0),},				   \
+			{.index = (_idx_1), .inverted = !(_sign_1),},				   \
+			{.index = (_idx_2), .inverted = !(_sign_2),},				   \
+		},										   \
+	}
+
+#define SENSOR_THREE_AXIS_REF_DEFINE(name, ...)							   \
+	static const STRUCT_SECTION_ITERABLE(sensor_three_axis_ref, name) =			   \
+		SENSOR_THREE_AXIS_REF_INITIALIZER(__VA_ARGS__)
+
+#define SENSOR_THREE_AXIS_REF_DT_NAME(node_id)							   \
+	_CONCAT(_sensor_three_axis_ref, DEVICE_DT_NAME_GET(node_id))
+
+#define SENSOR_THREE_AXIS_REF_DT_DEFINE(node_id)						   \
+	SENSOR_THREE_AXIS_REF_DEFINE(SENSOR_THREE_AXIS_REF_DT_NAME(node_id),			   \
+				     DEVICE_DT_GET(node_id),					   \
+				     DT_PROP_OR(node_id, axis_align_x,				   \
+						SENSOR_AXIS_ALIGN_DT_X),			   \
+				     DT_PROP_OR(node_id, axis_align_y,				   \
+						SENSOR_AXIS_ALIGN_DT_Y),			   \
+				     DT_PROP_OR(node_id, axis_align_z,				   \
+						SENSOR_AXIS_ALIGN_DT_Z),			   \
+				     DT_PROP_OR(node_id, axis_align_x_sign,			   \
+						SENSOR_AXIS_ALIGN_DT_POS),			   \
+				     DT_PROP_OR(node_id, axis_align_y_sign,			   \
+						SENSOR_AXIS_ALIGN_DT_POS),			   \
+				     DT_PROP_OR(node_id, axis_align_z_sign,			   \
+						SENSOR_AXIS_ALIGN_DT_POS))
+
+static inline int sensor_three_axis_ref_get(const struct device *dev,
+					    const struct sensor_three_axis_ref **ref)
+{
+	STRUCT_SECTION_FOREACH(sensor_three_axis_ref, axis_ref) {
+		if (axis_ref->dev == dev) {
+			*ref = axis_ref;
+			return 0;
+		}
+	}
+	return -EINVAL;
+}
+
+static inline void sensor_three_axis_ref_align(const struct sensor_three_axis_ref *ref,
+					       struct sensor_three_axis_data *data)
+{
+	for (size_t i = 0; i < data->header.reading_count; i++) {
+		struct sensor_three_axis_sample_data reading = data->readings[i];
+
+		for (size_t j = 0; j < 3; j++) {
+			q31_t value = reading.values[ref->axis[j].index];
+
+			data->readings[i].values[j] = ref->axis[j].inverted ? -value : value;
+		}
+	}
+}
+
+#else
+
+#define SENSOR_THREE_AXIS_REF_DT_NAME(name, ...)
+#define SENSOR_THREE_AXIS_REF_DT_DEFINE(node_id)
+
+#endif /* CONFIG_SENSOR_THREE_AXIS_REF */
+
 /**
  * @brief Like DEVICE_DT_DEFINE() with sensor specifics.
  *
@@ -1605,6 +1690,7 @@ struct sensor_info {
 			 data_ptr, cfg_ptr, level, prio,		\
 			 api_ptr, __VA_ARGS__);				\
 									\
+	SENSOR_THREE_AXIS_REF_DT_DEFINE(node_id);			\
 	SENSOR_INFO_DT_DEFINE(node_id);
 
 /**
