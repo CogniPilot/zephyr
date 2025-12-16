@@ -171,6 +171,12 @@ static inline void rtio_executor_handle_multishot(struct rtio_iodev_sqe *iodev_s
 		rtio_release_buffer(r, iodev_sqe->sqe.rx.buf, iodev_sqe->sqe.rx.buf_len);
 		rtio_sqe_pool_free(r->sqe_pool, iodev_sqe);
 	} else {
+		if (iodev_sqe->sqe.op == RTIO_OP_RX && uses_mempool) {
+			/* Reset the buffer info so the next request can get a new one */
+			iodev_sqe->sqe.rx.buf = NULL;
+			iodev_sqe->sqe.rx.buf_len = 0;
+		}
+
 		/* Request was not canceled, put the SQE back in the queue */
 		if (iodev_sqe->sqe.op == RTIO_OP_RX && uses_mempool) {
 			/* Reset the buffer info so the next request can get a new one */
