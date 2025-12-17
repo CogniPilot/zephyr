@@ -1078,7 +1078,71 @@ ZTEST(rtio_api, test_rtio_await)
 	test_rtio_await_executor_(&r_await0, &r_await1);
 }
 
+RTIO_DEFINE(r_sqe_reset_all, 1, 1);
+RTIO_DEFINE_WITH_MEMPOOL(r_sqe_reset_all_mempool, 1, 1, 1, MEM_BLK_SIZE, MEM_BLK_ALIGN);
+RTIO_IODEV_TEST_DEFINE(iodev_test_reset_all);
 
+static void prepare_read_mempool(struct rtio_sqe *sqe, struct rtio_iodev *iodev)
+{
+	static uint8_t test_data[MEM_BLK_SIZE];
+
+	rtio_sqe_prep_read_with_pool(sqe, iodev, RTIO_PRIO_NORM, test_data);
+}
+
+static void prepare_nop(struct rtio_sqe *sqe, struct rtio_iodev *iodev)
+{
+	rtio_sqe_prep_nop(sqe, iodev, NULL);
+}
+
+typedef void (*prepare_op_t)(struct rtio_sqe *sqe, struct rtio_iodev *iodev);
+
+
+void test_rtio_sqe_reset_all_(struct rtio *r, size_t i, prepare_op_t op_fn)
+{
+	struct rtio_sqe *sqe;
+	struct rtio_cqe *cqe;
+
+	rtio_iodev_test_set_block(&iodev_test_reset_all, true);
+
+	sqe = rtio_sqe_acquire(r);
+	op_fn(sqe, &iodev_test_reset_all);
+	rtio_submit(r, 0);
+	k_sleep(K_MSEC(20));
+
+	/* We don't have a response and we don't have more sqe's to work with */
+	zassert_is_null(rtio_cqe_consume(r), "%d", i);
+	zassert_is_null(rtio_sqe_acquire(r), "%d", i);
+
+	rtio_sqe_reset_all(r);
+	rtio_iodev_test_set_block(&iodev_test_reset_all, false);
+
+	/* After resetting we now have SQEs to work with */
+	sqe = rtio_sqe_acquire(r);
+	zassert_not_null(sqe, "%d", i);
+	op_fn(sqe, &iodev_test_reset_all);
+	rtio_submit(r, 0);
+	k_sleep(K_MSEC(20));
+
+	cqe = rtio_cqe_consume(r);
+	zassert_not_null(cqe, "%d", i);
+	zassert_ok(cqe->result, "%d, %d", i, cqe->result);
+
+	rtio_cqe_release(r, cqe);
+}
+
+ZTEST(rtio_api, test_rtio_sqe_reset_all)
+{
+	rtio_iodev_test_init(&iodev_test_reset_all);
+
+	/* Confirm sqe's are freed */
+	for (size_t i = 0; i < 100 ; i++) {
+		test_rtio_sqe_reset_all_(&r_sqe_reset_all, i, prepare_nop);
+	}
+	/* Confirm memblocks are freed */
+	for (size_t i = 0; i < 1 ; i++) {
+		test_rtio_sqe_reset_all_(&r_sqe_reset_all_mempool, i, prepare_read_mempool);
+	}
+}
 
 RTIO_DEFINE(r_callback_result, SQE_POOL_SIZE, CQE_POOL_SIZE);
 RTIO_IODEV_TEST_DEFINE(iodev_test_callback_result);
