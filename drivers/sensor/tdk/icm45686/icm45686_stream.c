@@ -106,16 +106,18 @@ static inline void icm45686_stream_result(const struct device *dev,
 	const struct icm45686_config *cfg = dev->config;
 	struct rtio_iodev_sqe *iodev_sqe = data->stream.iodev_sqe;
 
-	(void)atomic_set(&data->stream.state, ICM45686_STREAM_OFF);
 	memset(&data->stream.data, 0, sizeof(data->stream.data));
 	data->stream.iodev_sqe = NULL;
 
 	if (result < 0) {
 		/** Clear config-set so next submission re-configures the IMU */
+		(void)atomic_set(&data->stream.state, ICM45686_STREAM_OFF);
 		memset(&data->stream.settings, 0, sizeof(data->stream.settings));
 		(void)gpio_pin_interrupt_configure_dt(&cfg->int_gpio, GPIO_INT_DISABLE);
+		rtio_sqe_drop_all(data->bus.rtio.ctx);
 		rtio_iodev_sqe_err(iodev_sqe, result);
 	} else {
+		(void)atomic_set(&data->stream.state, ICM45686_STREAM_ON);
 		rtio_iodev_sqe_ok(iodev_sqe, 0);
 	}
 }
@@ -418,11 +420,15 @@ void icm45686_stream_submit(const struct device *dev,
 		 "configure it on the device-tree");
 
 	/* Store context for next submission (handled within callbacks) */
+	if (data->stream.iodev_sqe != NULL) {
+		LOG_WRN("Overriding on-going stream...");
+		(void)atomic_set(&data->stream.state, ICM45686_STREAM_OFF);
+	}
 	data->stream.iodev_sqe = iodev_sqe;
-	(void)atomic_set(&data->stream.state, ICM45686_STREAM_ON);
+	enum icm45686_stream_state st = atomic_set(&data->stream.state, ICM45686_STREAM_ON);
 
-	if (settings_changed(&data->stream, &stream)) {
-
+	if (settings_changed(&data->stream, &stream) || st != ICM45686_STREAM_ON) {
+		LOG_WRN("Configuring stream..");
 		data->stream.settings = stream.settings;
 
 		/* Disable all interrupts before re-configuring */
