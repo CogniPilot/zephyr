@@ -31,6 +31,9 @@ struct rtio_iodev_test_data {
 
 	/* Mocked result to receive by the IODEV */
 	int result;
+
+	/* Simulates an iodev not picking up items or not completing them */
+	bool block;
 };
 
 static void rtio_iodev_test_next(struct rtio_iodev_test_data *data, bool completion)
@@ -64,6 +67,12 @@ out:
 
 static void rtio_iodev_test_complete(struct rtio_iodev_test_data *data, int status)
 {
+	/* Simulate the iodev missing or dropping an SQE */
+	if (data->block) {
+		rtio_iodev_test_next(data, true);
+		return;
+	}
+
 	if (status < 0) {
 		rtio_iodev_sqe_err(data->txn_head, status);
 		rtio_iodev_test_next(data, true);
@@ -143,6 +152,7 @@ void rtio_iodev_test_init(struct rtio_iodev *test)
 	data->txn_curr = NULL;
 	k_timer_init(&data->timer, rtio_iodev_timer_fn, NULL);
 	data->result = 0;
+	data->block = false;
 }
 
 void rtio_iodev_test_set_result(struct rtio_iodev *test, int result)
@@ -150,6 +160,13 @@ void rtio_iodev_test_set_result(struct rtio_iodev *test, int result)
 	struct rtio_iodev_test_data *data = test->data;
 
 	data->result = result;
+}
+
+void rtio_iodev_test_set_block(struct rtio_iodev *test, bool block)
+{
+	struct rtio_iodev_test_data *data = test->data;
+
+	data->block = block;
 }
 
 #define RTIO_IODEV_TEST_DEFINE(name)                                                               \
