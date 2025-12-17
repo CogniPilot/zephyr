@@ -136,6 +136,19 @@ static ALWAYS_INLINE void mpsc_push(struct mpsc *q, struct mpsc_node *n)
 	arch_irq_unlock(key);
 }
 
+static inline bool mpsc_contains_node(struct mpsc *q, struct mpsc_node *n)
+{
+	struct mpsc_node *head = (struct mpsc_node *)mpsc_ptr_get(q->head);
+
+	while (head != NULL) {
+		if (head == n) {
+			return true;
+		}
+		head = head->next;
+	}
+	return false;
+}
+
 /**
  * @brief Pop a node off of the list
  *
