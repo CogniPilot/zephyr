@@ -137,6 +137,35 @@ static ALWAYS_INLINE void mpsc_push(struct mpsc *q, struct mpsc_node *n)
 }
 
 /**
+ * @brief Report whether a node is currently linked in the queue
+ *
+ * Walks the queue from the consumer end towards the producer end, so the cost is
+ * O(n) in the number of queued nodes.
+ *
+ * @warning Only safe to call from the single consumer context, with producers
+ *          inhibited, exactly like @ref mpsc_pop.
+ *
+ * @param q Queue to inspect
+ * @param n Node to look for
+ *
+ * @retval true The node is linked in the queue
+ * @retval false The node is not linked in the queue
+ */
+static inline bool mpsc_contains_node(struct mpsc *q, struct mpsc_node *n)
+{
+	struct mpsc_node *node = q->tail;
+
+	while (node != NULL) {
+		if (node == n) {
+			return true;
+		}
+		node = (struct mpsc_node *)mpsc_ptr_get(node->next);
+	}
+
+	return false;
+}
+
+/**
  * @brief Pop a node off of the list
  *
  * @retval NULL When no node is available

@@ -1035,6 +1035,92 @@ static inline int z_impl_rtio_cqe_copy_out(struct rtio *r,
 	return copied;
 }
 
+/** @cond INTERNAL_HIDDEN */
+
+/**
+ * @brief Report whether a submission is linked behind a checked-out delay
+ *
+ * A delay a timeout iodev still holds is completed by the executor when it
+ * expires, and that completion walks the transaction and chain links behind it,
+ * submitting or releasing every entry it reaches. Those entries therefore still
+ * belong to the executor even though no iodev is servicing them yet.
+ *
+ * The walk starts at every checked-out delay in the pool, so the cost is
+ * quadratic in the pool size. It runs only on the recovery path.
+ */
+static inline bool z_rtio_sqe_behind_delay(struct rtio_sqe_pool *pool,
+					   const struct rtio_iodev_sqe *iodev_sqe)
+{
+	for (size_t i = 0; i < pool->pool_size; i++) {
+		struct rtio_iodev_sqe *delay = &pool->pool[i];
+
+		if (delay == iodev_sqe || delay->sqe.op != RTIO_OP_DELAY ||
+		    mpsc_contains_node(&pool->free_q, &delay->q)) {
+			continue;
+		}
+
+		for (struct rtio_iodev_sqe *next = rtio_iodev_sqe_next(delay); next != NULL;
+		     next = rtio_iodev_sqe_next(next)) {
+			if (next == iodev_sqe) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+/** @endcond */
+
+/**
+ * @brief Reclaim every submission checked out of a context
+ *
+ * Drops the submissions still waiting for the executor, then returns every
+ * entry that is still checked out of the submission pool, releasing the mempool
+ * buffer it owns on the way.
+ *
+ * A submission that a timeout iodev holds in its pending delay list is only
+ * flagged for cancellation: that list is threaded through the very queue node
+ * the pool free list uses, so returning the entry here would corrupt it. The
+ * transaction or chain linked behind such a delay is left alone for the same
+ * reason, because the expiring delay still submits it. The executor returns the
+ * whole set to the pool when the delay fires, and the cancellation flag turns
+ * each completion into a discarded one.
+ *
+ * @warning Only call this once the caller has given up on the in-flight work of
+ *          the context. An iodev that is still servicing a submission may
+ *          complete an entry that has already gone back to the pool.
+ *
+ * @param r RTIO context
+ */
+static inline void rtio_sqe_reset_all(struct rtio *r)
+{
+	struct rtio_sqe_pool *pool = r->sqe_pool;
+
+	rtio_sqe_drop_all(r);
+
+	for (size_t i = 0; i < pool->pool_size; i++) {
+		struct rtio_iodev_sqe *iodev_sqe = &pool->pool[i];
+
+		if (mpsc_contains_node(&pool->free_q, &iodev_sqe->q)) {
+			continue;
+		}
+
+		(void)rtio_sqe_cancel(&iodev_sqe->sqe);
+
+		if (iodev_sqe->sqe.op == RTIO_OP_DELAY ||
+		    z_rtio_sqe_behind_delay(pool, iodev_sqe)) {
+			continue;
+		}
+
+		if (FIELD_GET(RTIO_SQE_MEMPOOL_BUFFER, iodev_sqe->sqe.flags) == 1) {
+			rtio_release_buffer(r, iodev_sqe->sqe.rx.buf, iodev_sqe->sqe.rx.buf_len);
+		}
+
+		rtio_sqe_pool_free(pool, iodev_sqe);
+	}
+}
+
 /**
  * @brief Submit I/O requests to the underlying executor
  *
