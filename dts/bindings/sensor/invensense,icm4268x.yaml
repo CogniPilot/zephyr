@@ -110,3 +110,123 @@ properties:
     type: boolean
     description: |
       Enables hires for fifo
+
+  accel-filt-bw:
+    type: int
+    default: 0
+    description: |
+      Specify the accelerometer UI filter bandwidth.
+      Default is ODR/2 (maximum bandwidth, lowest latency).
+      See datasheet section 5.3 for filter response details.
+    enum:
+      - 0   # ICM4268X_DT_ACCEL_FILT_BW_ODR_DIV_2 (default, max BW)
+      - 1   # ICM4268X_DT_ACCEL_FILT_BW_MAX_400_ODR_DIV_4
+      - 2   # ICM4268X_DT_ACCEL_FILT_BW_MAX_400_ODR_DIV_5
+      - 3   # ICM4268X_DT_ACCEL_FILT_BW_MAX_400_ODR_DIV_8
+      - 4   # ICM4268X_DT_ACCEL_FILT_BW_MAX_400_ODR_DIV_10
+      - 5   # ICM4268X_DT_ACCEL_FILT_BW_MAX_400_ODR_DIV_16
+      - 6   # ICM4268X_DT_ACCEL_FILT_BW_MAX_400_ODR_DIV_20
+      - 7   # ICM4268X_DT_ACCEL_FILT_BW_MAX_400_ODR_DIV_40
+      - 14  # ICM4268X_DT_ACCEL_FILT_BW_LOW_LATENCY (low latency mode, max 400Hz BW)
+      - 15  # ICM4268X_DT_ACCEL_FILT_BW_LOW_LATENCY_8X (low latency, max 200Hz, 8x ODR dec)
+
+  accel-filt-ord:
+    type: int
+    default: 0
+    description: |
+      Specify the accelerometer UI filter order.
+      Higher order provides steeper roll-off but more latency.
+      Default is 1st order.
+    enum:
+      - 0  # ICM4268X_DT_ACCEL_FILT_ORDER_1 (1st order)
+      - 1  # ICM4268X_DT_ACCEL_FILT_ORDER_2 (2nd order)
+      - 2  # ICM4268X_DT_ACCEL_FILT_ORDER_3 (3rd order)
+
+  gyro-filt-bw:
+    type: int
+    default: 0
+    description: |
+      Specify the gyroscope UI filter bandwidth.
+      Default is ODR/2 (maximum bandwidth, lowest latency).
+      See datasheet section 5.3 for filter response details.
+    enum:
+      - 0   # ICM4268X_DT_GYRO_FILT_BW_ODR_DIV_2 (default, max BW)
+      - 1   # ICM4268X_DT_GYRO_FILT_BW_MAX_400_ODR_DIV_4
+      - 2   # ICM4268X_DT_GYRO_FILT_BW_MAX_400_ODR_DIV_5
+      - 3   # ICM4268X_DT_GYRO_FILT_BW_MAX_400_ODR_DIV_8
+      - 4   # ICM4268X_DT_GYRO_FILT_BW_MAX_400_ODR_DIV_10
+      - 5   # ICM4268X_DT_GYRO_FILT_BW_MAX_400_ODR_DIV_16
+      - 6   # ICM4268X_DT_GYRO_FILT_BW_MAX_400_ODR_DIV_20
+      - 7   # ICM4268X_DT_GYRO_FILT_BW_MAX_400_ODR_DIV_40
+      - 14  # ICM4268X_DT_GYRO_FILT_BW_LOW_LATENCY (low latency mode, max 400Hz BW)
+      - 15  # ICM4268X_DT_GYRO_FILT_BW_LOW_LATENCY_8X (low latency, max 200Hz, 8x ODR dec)
+
+  gyro-filt-ord:
+    type: int
+    default: 0
+    description: |
+      Specify the gyroscope UI filter order.
+      Higher order provides steeper roll-off but more latency.
+      Default is 1st order.
+    enum:
+      - 0  # ICM4268X_DT_GYRO_FILT_ORDER_1 (1st order)
+      - 1  # ICM4268X_DT_GYRO_FILT_ORDER_2 (2nd order)
+      - 2  # ICM4268X_DT_GYRO_FILT_ORDER_3 (3rd order)
+
+  accel-aaf:
+    type: int
+    default: 0
+    description: |
+      Specify the accelerometer anti-aliasing filter (AAF) 3dB cutoff frequency in Hz.
+      The AAF is a hardware low-pass filter before the ADC that prevents aliasing.
+      Value 0 disables the AAF. Default is disabled (AAF off).
+      See datasheet section 5.2 for AAF response details.
+    enum:
+      - 0   # ICM4268X_DT_ACCEL_AAF_DIS (disabled)
+      - 1   # ICM4268X_DT_ACCEL_AAF_42 (42 Hz)
+      - 2   # ICM4268X_DT_ACCEL_AAF_84 (84 Hz)
+      - 3   # ICM4268X_DT_ACCEL_AAF_126 (126 Hz)
+      - 4   # ICM4268X_DT_ACCEL_AAF_170 (170 Hz)
+      - 5   # ICM4268X_DT_ACCEL_AAF_213 (213 Hz)
+      - 6   # ICM4268X_DT_ACCEL_AAF_258 (258 Hz)
+      - 7   # ICM4268X_DT_ACCEL_AAF_303 (303 Hz)
+      - 8   # ICM4268X_DT_ACCEL_AAF_348 (348 Hz)
+      - 9   # ICM4268X_DT_ACCEL_AAF_394 (394 Hz)
+      - 10  # ICM4268X_DT_ACCEL_AAF_441 (441 Hz)
+      - 11  # ICM4268X_DT_ACCEL_AAF_488 (488 Hz)
+      - 12  # ICM4268X_DT_ACCEL_AAF_536 (536 Hz)
+      - 13  # ICM4268X_DT_ACCEL_AAF_585 (585 Hz)
+      - 14  # ICM4268X_DT_ACCEL_AAF_634 (634 Hz)
+      - 21  # ICM4268X_DT_ACCEL_AAF_997 (997 Hz)
+      - 38  # ICM4268X_DT_ACCEL_AAF_2029 (2029 Hz)
+      - 52  # ICM4268X_DT_ACCEL_AAF_3057 (3057 Hz)
+      - 63  # ICM4268X_DT_ACCEL_AAF_3979 (3979 Hz)
+
+  gyro-aaf:
+    type: int
+    default: 0
+    description: |
+      Specify the gyroscope anti-aliasing filter (AAF) 3dB cutoff frequency in Hz.
+      The AAF is a hardware low-pass filter before the ADC that prevents aliasing.
+      Value 0 disables the AAF. Default is disabled (AAF off).
+      See datasheet section 5.2 for AAF response details.
+    enum:
+      - 0   # ICM4268X_DT_GYRO_AAF_DIS (disabled)
+      - 1   # ICM4268X_DT_GYRO_AAF_42 (42 Hz)
+      - 2   # ICM4268X_DT_GYRO_AAF_84 (84 Hz)
+      - 3   # ICM4268X_DT_GYRO_AAF_126 (126 Hz)
+      - 4   # ICM4268X_DT_GYRO_AAF_170 (170 Hz)
+      - 5   # ICM4268X_DT_GYRO_AAF_213 (213 Hz)
+      - 6   # ICM4268X_DT_GYRO_AAF_258 (258 Hz)
+      - 7   # ICM4268X_DT_GYRO_AAF_303 (303 Hz)
+      - 8   # ICM4268X_DT_GYRO_AAF_348 (348 Hz)
+      - 9   # ICM4268X_DT_GYRO_AAF_394 (394 Hz)
+      - 10  # ICM4268X_DT_GYRO_AAF_441 (441 Hz)
+      - 11  # ICM4268X_DT_GYRO_AAF_488 (488 Hz)
+      - 12  # ICM4268X_DT_GYRO_AAF_536 (536 Hz)
+      - 13  # ICM4268X_DT_GYRO_AAF_585 (585 Hz)
+      - 14  # ICM4268X_DT_GYRO_AAF_634 (634 Hz)
+      - 21  # ICM4268X_DT_GYRO_AAF_997 (997 Hz)
+      - 38  # ICM4268X_DT_GYRO_AAF_2029 (2029 Hz)
+      - 52  # ICM4268X_DT_GYRO_AAF_3057 (3057 Hz)
+      - 63  # ICM4268X_DT_GYRO_AAF_3979 (3979 Hz)
