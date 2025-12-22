@@ -328,12 +328,17 @@ struct icm4268x_cfg {
 	uint8_t accel_pwr_mode;
 	uint8_t accel_fs;
 	uint8_t accel_odr;
-	/* TODO accel signal processing options */
+	uint8_t accel_filt_bw;
+	uint8_t accel_filt_ord;
 
 	uint8_t gyro_pwr_mode;
 	uint8_t gyro_fs;
 	uint8_t gyro_odr;
-	/* TODO gyro signal processing options */
+	uint8_t gyro_filt_bw;
+	uint8_t gyro_filt_ord;
+
+	uint8_t accel_aaf;
+	uint8_t gyro_aaf;
 
 	bool temp_dis;
 	/* TODO temp signal processing options */

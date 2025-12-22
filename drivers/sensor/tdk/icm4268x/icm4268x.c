@@ -338,9 +338,15 @@ void icm4268x_unlock(const struct device *dev)
 		.accel_pwr_mode = DT_INST_PROP(inst, accel_pwr_mode),		\
 		.accel_fs = DT_INST_PROP(inst, accel_fs),			\
 		.accel_odr = DT_INST_PROP(inst, accel_odr),			\
+		.accel_filt_bw = DT_INST_PROP(inst, accel_filt_bw),		\
+		.accel_filt_ord = DT_INST_PROP(inst, accel_filt_ord),		\
 		.gyro_pwr_mode = DT_INST_PROP(inst, gyro_pwr_mode),		\
 		.gyro_fs = DT_INST_PROP(inst, gyro_fs),				\
 		.gyro_odr = DT_INST_PROP(inst, gyro_odr),			\
+		.gyro_filt_bw = DT_INST_PROP(inst, gyro_filt_bw),		\
+		.gyro_filt_ord = DT_INST_PROP(inst, gyro_filt_ord),		\
+		.accel_aaf = DT_INST_PROP(inst, accel_aaf),			\
+		.gyro_aaf = DT_INST_PROP(inst, gyro_aaf),			\
 		.temp_dis = false,						\
 		.fifo_en = IS_ENABLED(CONFIG_ICM4268X_STREAM),			\
 		.batch_ticks = 0,						\

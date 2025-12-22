@@ -18,6 +18,42 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ICM4268X_LL, CONFIG_SENSOR_LOG_LEVEL);
 
+/**
+ * @brief AAF bitshift lookup table indexed by AAF DELT value.
+ * The DELT value directly corresponds to the DT enum (1=42Hz, 2=84Hz, etc.)
+ * Index 0 is unused (AAF disabled).
+ * Values from ICM42688 datasheet Table 17.
+ */
+static const uint8_t icm4268x_aaf_bitshift[] = {
+	0,  /* 0: disabled */
+	15, /* 1: 42Hz */
+	13, /* 2: 84Hz */
+	12, /* 3: 126Hz */
+	11, /* 4: 170Hz */
+	10, /* 5: 213Hz */
+	10, /* 6: 258Hz */
+	9,  /* 7: 303Hz */
+	9,  /* 8: 348Hz */
+	9,  /* 9: 394Hz */
+	8,  /* 10: 441Hz */
+	8,  /* 11: 488Hz */
+	8,  /* 12: 536Hz */
+	8,  /* 13: 585Hz */
+	7,  /* 14: 634Hz */
+	0,  /* 15-20: unused */
+	0, 0, 0, 0, 0,
+	6,  /* 21: 997Hz */
+	0,  /* 22-37: unused */
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	4,  /* 38: 2029Hz */
+	0,  /* 39-51: unused */
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	4,  /* 52: 3057Hz */
+	0,  /* 53-62: unused */
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	3,  /* 63: 3979Hz */
+};
+
 int icm4268x_reset(const struct device *dev)
 {
 	int res;
@@ -189,6 +225,156 @@ int icm4268x_configure(const struct device *dev, struct icm4268x_cfg *cfg)
 		return -EINVAL;
 	}
 
+	/* Configure gyroscope AAF (Bank 1) */
+	if (cfg->gyro_aaf > 0 && cfg->gyro_aaf < ARRAY_SIZE(icm4268x_aaf_bitshift)) {
+		uint8_t delt = cfg->gyro_aaf;
+		uint16_t deltsqr = delt * delt;
+		uint8_t bitshift = icm4268x_aaf_bitshift[delt];
+
+		/* GYRO_CONFIG_STATIC2: Enable AAF (clear disable bit) */
+		uint8_t gyro_config_static2 = 0;
+
+		LOG_DBG("GYRO_CONFIG_STATIC2 (0x%x) 0x%x",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_GYRO_CONFIG_STATIC2),
+			gyro_config_static2);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC2,
+						gyro_config_static2);
+		if (res != 0) {
+			LOG_ERR("Error writing GYRO_CONFIG_STATIC2");
+			return -EINVAL;
+		}
+
+		/* GYRO_CONFIG_STATIC3: AAF DELT */
+		uint8_t gyro_config_static3 = FIELD_PREP(MASK_GYRO_AAF_DELT, delt);
+
+		LOG_DBG("GYRO_CONFIG_STATIC3 (0x%x) 0x%x",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_GYRO_CONFIG_STATIC3),
+			gyro_config_static3);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC3,
+						gyro_config_static3);
+		if (res != 0) {
+			LOG_ERR("Error writing GYRO_CONFIG_STATIC3");
+			return -EINVAL;
+		}
+
+		/* GYRO_CONFIG_STATIC4: AAF DELTSQR lower 8 bits */
+		uint8_t gyro_config_static4 = FIELD_PREP(MASK_GYRO_AAF_DELTSQR_7_0,
+							 deltsqr & 0xFF);
+
+		LOG_DBG("GYRO_CONFIG_STATIC4 (0x%x) 0x%x",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_GYRO_CONFIG_STATIC4),
+			gyro_config_static4);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC4,
+						gyro_config_static4);
+		if (res != 0) {
+			LOG_ERR("Error writing GYRO_CONFIG_STATIC4");
+			return -EINVAL;
+		}
+
+		/* GYRO_CONFIG_STATIC5: AAF BITSHIFT and DELTSQR upper 4 bits */
+		uint8_t gyro_config_static5 = FIELD_PREP(MASK_GYRO_AAF_BITSHIFT, bitshift) |
+					      FIELD_PREP(MASK_GYRO_AAF_DELTSQR_11_8,
+							 (deltsqr >> 8) & 0x0F);
+
+		LOG_DBG("GYRO_CONFIG_STATIC5 (0x%x) 0x%x",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_GYRO_CONFIG_STATIC5),
+			gyro_config_static5);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC5,
+						gyro_config_static5);
+		if (res != 0) {
+			LOG_ERR("Error writing GYRO_CONFIG_STATIC5");
+			return -EINVAL;
+		}
+
+		LOG_DBG("Gyro AAF configured: delt=%d, deltsqr=%d, bitshift=%d",
+			delt, deltsqr, bitshift);
+	} else if (cfg->gyro_aaf == 0) {
+		/* Disable gyro AAF */
+		uint8_t gyro_config_static2 = BIT_GYRO_AAF_DIS;
+
+		LOG_DBG("GYRO_CONFIG_STATIC2 (0x%x) 0x%x (AAF disabled)",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_GYRO_CONFIG_STATIC2),
+			gyro_config_static2);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG_STATIC2,
+						gyro_config_static2);
+		if (res != 0) {
+			LOG_ERR("Error writing GYRO_CONFIG_STATIC2");
+			return -EINVAL;
+		}
+	}
+
+	/* Select register bank 2 for accel AAF configuration */
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_BANK_SEL, BIT_BANK2);
+	if (res != 0) {
+		LOG_ERR("Error selecting register bank 2");
+		return -EINVAL;
+	}
+
+	/* Configure accelerometer AAF (Bank 2) */
+	if (cfg->accel_aaf > 0 && cfg->accel_aaf < ARRAY_SIZE(icm4268x_aaf_bitshift)) {
+		uint8_t delt = cfg->accel_aaf;
+		uint16_t deltsqr = delt * delt;
+		uint8_t bitshift = icm4268x_aaf_bitshift[delt];
+
+		/* ACCEL_CONFIG_STATIC2: AAF DELT and enable (clear disable bit) */
+		uint8_t accel_config_static2 = FIELD_PREP(MASK_ACCEL_AAF_DELT, delt);
+
+		LOG_DBG("ACCEL_CONFIG_STATIC2 (0x%x) 0x%x",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_ACCEL_CONFIG_STATIC2),
+			accel_config_static2);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC2,
+						accel_config_static2);
+		if (res != 0) {
+			LOG_ERR("Error writing ACCEL_CONFIG_STATIC2");
+			return -EINVAL;
+		}
+
+		/* ACCEL_CONFIG_STATIC3: AAF DELTSQR lower 8 bits */
+		uint8_t accel_config_static3 = FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_7_0,
+							  deltsqr & 0xFF);
+
+		LOG_DBG("ACCEL_CONFIG_STATIC3 (0x%x) 0x%x",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_ACCEL_CONFIG_STATIC3),
+			accel_config_static3);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC3,
+						accel_config_static3);
+		if (res != 0) {
+			LOG_ERR("Error writing ACCEL_CONFIG_STATIC3");
+			return -EINVAL;
+		}
+
+		/* ACCEL_CONFIG_STATIC4: AAF BITSHIFT and DELTSQR upper 4 bits */
+		uint8_t accel_config_static4 = FIELD_PREP(MASK_ACCEL_AAF_BITSHIFT, bitshift) |
+					       FIELD_PREP(MASK_ACCEL_AAF_DELTSQR_11_8,
+							  (deltsqr >> 8) & 0x0F);
+
+		LOG_DBG("ACCEL_CONFIG_STATIC4 (0x%x) 0x%x",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_ACCEL_CONFIG_STATIC4),
+			accel_config_static4);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC4,
+						accel_config_static4);
+		if (res != 0) {
+			LOG_ERR("Error writing ACCEL_CONFIG_STATIC4");
+			return -EINVAL;
+		}
+
+		LOG_DBG("Accel AAF configured: delt=%d, deltsqr=%d, bitshift=%d",
+			delt, deltsqr, bitshift);
+	} else if (cfg->accel_aaf == 0) {
+		/* Disable accel AAF */
+		uint8_t accel_config_static2 = BIT_ACCEL_AAF_DIS;
+
+		LOG_DBG("ACCEL_CONFIG_STATIC2 (0x%x) 0x%x (AAF disabled)",
+			(uint8_t)FIELD_GET(REG_ADDRESS_MASK, REG_ACCEL_CONFIG_STATIC2),
+			accel_config_static2);
+		res = icm4268x_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG_STATIC2,
+						accel_config_static2);
+		if (res != 0) {
+			LOG_ERR("Error writing ACCEL_CONFIG_STATIC2");
+			return -EINVAL;
+		}
+	}
+
 	/* Select register bank 0 */
 	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_BANK_SEL, BIT_BANK0);
 	if (res != 0) {
@@ -241,6 +427,37 @@ int icm4268x_configure(const struct device *dev, struct icm4268x_cfg *cfg)
 	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG0, gyro_config0);
 	if (res != 0) {
 		LOG_ERR("Error writing GYRO_CONFIG0");
+		return -EINVAL;
+	}
+
+	/* Configure gyro filter order in GYRO_CONFIG1 */
+	uint8_t gyro_config1 = FIELD_PREP(MASK_GYRO_UI_FILT_ORD, cfg->gyro_filt_ord);
+
+	LOG_DBG("GYRO_CONFIG1 (0x%x) 0x%x", REG_GYRO_CONFIG1, gyro_config1);
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_CONFIG1, gyro_config1);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_CONFIG1");
+		return -EINVAL;
+	}
+
+	/* Configure accel and gyro filter bandwidth in GYRO_ACCEL_CONFIG0 */
+	uint8_t gyro_accel_config0 = FIELD_PREP(MASK_ACCEL_UI_FILT_BW, cfg->accel_filt_bw) |
+				     FIELD_PREP(MASK_GYRO_UI_FILT_BW, cfg->gyro_filt_bw);
+
+	LOG_DBG("GYRO_ACCEL_CONFIG0 (0x%x) 0x%x", REG_GYRO_ACCEL_CONFIG0, gyro_accel_config0);
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_GYRO_ACCEL_CONFIG0, gyro_accel_config0);
+	if (res != 0) {
+		LOG_ERR("Error writing GYRO_ACCEL_CONFIG0");
+		return -EINVAL;
+	}
+
+	/* Configure accel filter order in ACCEL_CONFIG1 */
+	uint8_t accel_config1 = FIELD_PREP(MASK_ACCEL_UI_FILT_ORD, cfg->accel_filt_ord);
+
+	LOG_DBG("ACCEL_CONFIG1 (0x%x) 0x%x", REG_ACCEL_CONFIG1, accel_config1);
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_ACCEL_CONFIG1, accel_config1);
+	if (res != 0) {
+		LOG_ERR("Error writing ACCEL_CONFIG1");
 		return -EINVAL;
 	}
 
