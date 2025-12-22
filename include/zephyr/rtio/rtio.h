@@ -1742,6 +1742,32 @@ static inline int z_impl_rtio_cqe_copy_out(struct rtio *r,
 }
 
 /**
+ * @brief Cancell all sqe items and put them back in the pool.
+ *
+ * @param r RTIO context
+ */
+static inline void rtio_sqe_reset_all(struct rtio *r)
+{
+	struct rtio_sqe_pool *pool = r->sqe_pool;
+
+	rtio_sqe_drop_all(r);
+
+	for (size_t i = 0 ; i < pool->pool_size ; i++) {
+		if (!mpsc_contains_node(&pool->free_q, &pool->pool[i].q)) {
+			const bool uses_mempool =
+				FIELD_GET(RTIO_SQE_MEMPOOL_BUFFER, pool->pool[i].sqe.flags) == 1;
+
+				if (uses_mempool) {
+				rtio_release_buffer(r, pool->pool[i].sqe.rx.buf,
+						pool->pool[i].sqe.rx.buf_len);
+			}
+			(void)rtio_sqe_cancel(&pool->pool[i].sqe);
+			rtio_sqe_pool_free(pool, &pool->pool[i]);
+		}
+	}
+}
+
+/**
  * @brief Submit I/O requests to the underlying executor
  *
  * Submits the queue of submission queue events to the executor.
