@@ -1522,6 +1522,16 @@ static inline void sensor_three_axis_ref_align(const struct sensor_three_axis_re
 	}
 }
 
+static inline void sensor_three_axis_ref_align_fp(const struct sensor_three_axis_ref *ref,
+						  double data[3])
+{
+	double values[3] = {data[0], data[1], data[2]};
+
+	for (size_t i = 0 ; i < 3 ; i++) {
+		data[ref->axis[i].index] = ref->axis[i].inverted ? -values[i] : values[i];
+	}
+}
+
 #else
 
 #define SENSOR_THREE_AXIS_REF_DT_NAME(name, ...)
