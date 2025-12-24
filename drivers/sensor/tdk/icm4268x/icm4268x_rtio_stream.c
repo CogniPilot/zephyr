@@ -21,6 +21,7 @@ void icm4268x_submit_stream(const struct device *sensor, struct rtio_iodev_sqe *
 	const struct icm4268x_dev_cfg *dev_cfg = (const struct icm4268x_dev_cfg *)sensor->config;
 	struct icm4268x_dev_data *data = sensor->data;
 	struct icm4268x_cfg new_config = data->cfg;
+	bool drdy_only = false;
 
 	new_config.interrupt1_drdy = false;
 	new_config.interrupt1_fifo_ths = false;
@@ -43,9 +44,21 @@ void icm4268x_submit_stream(const struct device *sensor, struct rtio_iodev_sqe *
 		}
 	}
 
+	/* Check if we're in DRDY-only mode (no FIFO triggers) */
+	drdy_only = new_config.interrupt1_drdy &&
+		    !new_config.interrupt1_fifo_ths &&
+		    !new_config.interrupt1_fifo_full;
+
+	if (drdy_only) {
+		/* Disable FIFO for lowest latency DRDY streaming */
+		new_config.fifo_en = false;
+		LOG_DBG("%p DRDY-only mode: FIFO disabled for lowest latency", sensor);
+	}
+
 	if (new_config.interrupt1_drdy != data->cfg.interrupt1_drdy ||
 	    new_config.interrupt1_fifo_ths != data->cfg.interrupt1_fifo_ths ||
-	    new_config.interrupt1_fifo_full != data->cfg.interrupt1_fifo_full) {
+	    new_config.interrupt1_fifo_full != data->cfg.interrupt1_fifo_full ||
+	    new_config.fifo_en != data->cfg.fifo_en) {
 		int rc = icm4268x_safely_configure(sensor, &new_config);
 
 		if (rc != 0) {
@@ -84,6 +97,49 @@ static inline void icm4268x_stream_result(const struct device *dev, int result)
 	} else {
 		rtio_iodev_sqe_ok(streaming_sqe, result);
 	}
+}
+
+/**
+ * @brief Completion callback for DRDY (Data Ready) streaming mode.
+ *
+ * This callback handles the completion of a direct register read (non-FIFO)
+ * triggered by the data ready interrupt. It provides lower latency than
+ * FIFO mode by reading directly from the sensor data registers.
+ */
+static void icm4268x_drdy_complete_cb(struct rtio *r, const struct rtio_sqe *sqe,
+				      int result, void *arg)
+{
+	ARG_UNUSED(r);
+	ARG_UNUSED(sqe);
+
+	const struct device *dev = arg;
+	struct icm4268x_dev_data *drv_data = dev->data;
+	const struct icm4268x_dev_cfg *dev_cfg = (const struct icm4268x_dev_cfg *)dev->config;
+	int rc = result;
+
+	if (drv_data->streaming_sqe == NULL ||
+	    FIELD_GET(RTIO_SQE_CANCELED, drv_data->streaming_sqe->sqe.flags)) {
+		LOG_ERR("%p DRDY CB triggered with NULL handle. Disabling Interrupt", dev);
+		(void)gpio_pin_interrupt_configure_dt(&dev_cfg->gpio_int1, GPIO_INT_DISABLE);
+		(void)atomic_set(&drv_data->state, ICM4268X_STREAM_OFF);
+		return;
+	}
+
+	/* Consume all completion queue entries */
+	struct rtio_cqe *cqe;
+
+	do {
+		cqe = rtio_cqe_consume(drv_data->bus.rtio.ctx);
+		if (cqe != NULL) {
+			if (rc >= 0) {
+				rc = cqe->result;
+			}
+			rtio_cqe_release(drv_data->bus.rtio.ctx, cqe);
+		}
+	} while (cqe != NULL);
+
+	(void)atomic_set(&drv_data->state, ICM4268X_STREAM_OFF);
+	icm4268x_stream_result(dev, rc);
 }
 
 static void icm4268x_complete_cb(struct rtio *r, const struct rtio_sqe *sqe, int result, void *arg)
@@ -180,6 +236,89 @@ static void icm4268x_complete_cb(struct rtio *r, const struct rtio_sqe *sqe, int
 	icm4268x_stream_result(dev, rc);
 }
 
+/**
+ * @brief Handle DRDY (Data Ready) streaming event.
+ *
+ * This function reads directly from the sensor data registers instead of FIFO,
+ * providing lower latency for time-critical applications.
+ */
+static void icm4268x_drdy_event(const struct device *dev)
+{
+	struct icm4268x_dev_data *drv_data = dev->data;
+	const struct icm4268x_dev_cfg *dev_cfg = (const struct icm4268x_dev_cfg *)dev->config;
+	struct rtio_sqe *sqe;
+	uint64_t cycles;
+	int rc;
+
+	if (drv_data->streaming_sqe == NULL ||
+	    FIELD_GET(RTIO_SQE_CANCELED, drv_data->streaming_sqe->sqe.flags)) {
+		LOG_ERR("%p DRDY event with no stream submission. Disabling IRQ", dev);
+		(void)gpio_pin_interrupt_configure_dt(&dev_cfg->gpio_int1, GPIO_INT_DISABLE);
+		(void)atomic_set(&drv_data->state, ICM4268X_STREAM_OFF);
+		return;
+	}
+	if (atomic_cas(&drv_data->state, ICM4268X_STREAM_ON, ICM4268X_STREAM_BUSY) == false) {
+		LOG_WRN("%p DRDY callback while stream is busy. Ignoring request", dev);
+		return;
+	}
+
+	rc = sensor_clock_get_cycles(&cycles);
+	if (rc != 0) {
+		LOG_ERR("%p Failed to get sensor clock cycles", dev);
+		icm4268x_stream_result(dev, rc);
+		return;
+	}
+
+	struct sensor_read_config *read_config =
+		(struct sensor_read_config *)drv_data->streaming_sqe->sqe.iodev->data;
+	struct sensor_stream_trigger *drdy_cfg =
+		icm4268x_get_read_config_trigger(read_config, SENSOR_TRIG_DATA_READY);
+
+	if (drdy_cfg && drdy_cfg->opt == SENSOR_STREAM_DATA_INCLUDE) {
+		uint8_t *buf;
+		uint32_t buf_len;
+		size_t required_len = sizeof(struct icm4268x_encoded_data);
+
+		rc = rtio_sqe_rx_buf(drv_data->streaming_sqe, required_len, required_len, &buf,
+				     &buf_len);
+		if (rc < 0) {
+			LOG_ERR("%p Failed to allocate buffer for DRDY read: %d", dev, rc);
+			icm4268x_stream_result(dev, rc);
+			return;
+		}
+
+		/* Fill in the header */
+		struct icm4268x_encoded_data *edata = (struct icm4268x_encoded_data *)buf;
+
+		edata->header.is_fifo = false;
+		edata->header.variant = drv_data->cfg.variant;
+		edata->header.accel_fs = drv_data->cfg.accel_fs;
+		edata->header.gyro_fs = drv_data->cfg.gyro_fs;
+		edata->header.timestamp = sensor_clock_cycles_to_ns(cycles);
+		edata->channels = 0x7F; /* All channels: temp + accel xyz + gyro xyz */
+
+		/* Read 14 bytes: temp(2) + accel(6) + gyro(6) directly from data registers */
+		rc = icm4268x_prep_reg_read_rtio_async(&drv_data->bus,
+						       REG_TEMP_DATA1 | REG_SPI_READ_BIT,
+						       (uint8_t *)edata->readings, 14, &sqe);
+		if (rc < 0 || !sqe) {
+			LOG_ERR("%p Could not prepare DRDY async read: %d", dev, rc);
+			icm4268x_stream_result(dev, -ENOMEM);
+			return;
+		}
+		sqe->flags |= RTIO_SQE_CHAINED;
+
+		struct rtio_sqe *cb_sqe = rtio_sqe_acquire(drv_data->bus.rtio.ctx);
+
+		rtio_sqe_prep_callback(cb_sqe, icm4268x_drdy_complete_cb, (void *)dev, NULL);
+		rtio_submit(drv_data->bus.rtio.ctx, 0);
+	} else {
+		/* DRDY trigger only, no data requested - just complete immediately */
+		(void)atomic_set(&drv_data->state, ICM4268X_STREAM_OFF);
+		icm4268x_stream_result(dev, 0);
+	}
+}
+
 void icm4268x_fifo_event(const struct device *dev)
 {
 	struct icm4268x_dev_data *drv_data = dev->data;
@@ -187,6 +326,12 @@ void icm4268x_fifo_event(const struct device *dev)
 	struct rtio_sqe *sqe;
 	uint64_t cycles;
 	int rc;
+
+	/* Check if we're in DRDY mode (no FIFO) */
+	if (drv_data->cfg.interrupt1_drdy && !drv_data->cfg.fifo_en) {
+		icm4268x_drdy_event(dev);
+		return;
+	}
 
 	if (drv_data->streaming_sqe == NULL ||
 	    FIELD_GET(RTIO_SQE_CANCELED, drv_data->streaming_sqe->sqe.flags)) {
