@@ -230,3 +230,11 @@ properties:
       - 38  # ICM4268X_DT_GYRO_AAF_2029 (2029 Hz)
       - 52  # ICM4268X_DT_GYRO_AAF_3057 (3057 Hz)
       - 63  # ICM4268X_DT_GYRO_AAF_3979 (3979 Hz)
+
+  interrupt1-drdy:
+    type: boolean
+    description: |
+      Route the data ready interrupt to INT1 pin. When enabled, the sensor
+      generates an interrupt on INT1 each time new sensor data is available.
+      This enables low-latency DRDY-based streaming mode where data is read
+      directly from sensor registers instead of FIFO.
