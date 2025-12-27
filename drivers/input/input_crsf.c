@@ -51,9 +51,10 @@ struct input_crsf_config {
 #define CRSF_MAX_FRAME_LEN         64
 #define CRSF_CHANNEL_COUNT         16
 #define CRSF_CONNECTION_TIMEOUT_MS 100
-#define CRSF_TX_BUF_SIZE           64
-#define CRSF_RX_BUF_SIZE           128  /* Async RX DMA buffer size */
-#define CRSF_RX_TIMEOUT_US         1000 /* Flush timeout for async RX */
+#define CRSF_TX_BUF_SIZE           CRSF_MAX_FRAME_LEN
+#define CRSF_RX_BUF_SIZE           (2*CRSF_MAX_FRAME_LEN) /* Async RX DMA buffer size */
+#define CRSF_RX_TIMEOUT_US         1000               /* Flush timeout for async RX */
+#define CRSF_QUEUE_SIZE            3
 
 #define REPORT_FILTER      CONFIG_INPUT_CRSF_REPORT_FILTER
 #define CHANNEL_VALUE_ZERO CONFIG_INPUT_CRSF_CHANNEL_VALUE_ZERO
@@ -61,27 +62,31 @@ struct input_crsf_config {
 
 /* RX State Machine */
 enum crsf_rx_state {
-	RX_STATE_SYNC, /* Waiting for 0xC8 */
-	RX_STATE_DATA, /* Reading Payload + CRC */
+	RX_STATE_SYNC,   /* Waiting for 0xC8 */
+	RX_STATE_TYPE,   /* Parse type header */
+	RX_STATE_IGNORE, /* Not implemented ignore */
+	RX_STATE_DATA,   /* Reading Payload + CRC */
 };
 
 struct input_crsf_data {
 	struct k_thread thread;
-	struct k_sem report_lock;
+
+	struct k_msgq rx_queue;
+	uint8_t rx_queue_buf[CRSF_QUEUE_SIZE * CRSF_MAX_FRAME_LEN]; // Buffer for 4 frames
+	char rx_queue_slab[CRSF_QUEUE_SIZE * CRSF_MAX_FRAME_LEN];   // Actual storage for the msgq
 
 	struct crsf_link_stats link_stats;
 
 	/* RX State */
 	enum crsf_rx_state rx_state;
-	uint8_t payload_len;                     /* Value of the 'Len' byte */
+	uint8_t payload_remaining;               /* Value of the 'Len' byte */
 	uint16_t xfer_bytes;                     /* Bytes read so far into rd_data */
 	uint8_t rd_data[CRSF_MAX_FRAME_LEN + 4]; /* Reassembly buffer */
 
-	/* Async RX Buffers (Double buffering) */
+	/* Async RX DMA Buffers (Double buffering) */
 	uint8_t *rx_buf_a;
 	uint8_t *rx_buf_b;
 
-	/* Double buffer for the thread */
 	uint8_t crsf_frame[CRSF_MAX_FRAME_LEN];
 	bool in_sync; /* Logical link state (valid RC frames being received) */
 
@@ -93,6 +98,24 @@ struct input_crsf_data {
 	int8_t channel_mapping[CRSF_CHANNEL_COUNT];
 	K_KERNEL_STACK_MEMBER(thread_stack, CONFIG_INPUT_CRSF_THREAD_STACK_SIZE);
 };
+
+/* The list of packet types we accept as RX */
+static const uint8_t crsf_whitelist[] = {
+	CRSF_TYPE_RC_CHANNELS,
+	CRSF_TYPE_LINK_STATS,
+};
+
+static inline bool is_crsf_whitelisted(uint8_t type)
+{
+	const int list_size = sizeof(crsf_whitelist) / sizeof(crsf_whitelist[0]);
+
+	for (int i = 0; i < list_size; i++) {
+		if (crsf_whitelist[i] == type) {
+			return true;
+		}
+	}
+	return false;
+}
 
 // atomic send has some problems for now
 #define POLL_TX
@@ -197,33 +220,34 @@ static void input_crsf_input_report_thread(const struct device *dev, void *dummy
 	struct input_crsf_data *const data = dev->data;
 	ARG_UNUSED(dummy2);
 	ARG_UNUSED(dummy3);
-	uint8_t i, channel;
-	uint8_t *crsf_channel_data = &data->crsf_frame[3];
+	uint8_t i, channel, payload_len, calc_crc, type;
+	uint8_t frame[CRSF_MAX_FRAME_LEN];
+
 	uint32_t value;
 	int bits_read;
-	unsigned int key;
 	int ret;
 	bool connected_reported = false;
 
 	while (true) {
-		if (!data->in_sync) {
-			k_sem_take(&data->report_lock, K_FOREVER);
+		k_timeout_t timeout =
+			data->in_sync ? K_MSEC(CRSF_CONNECTION_TIMEOUT_MS) : K_FOREVER;
+
+		ret = k_msgq_get(&data->rx_queue, &frame, timeout);
+
+		if (ret == -EAGAIN) {
+			/* Timeout occurred - Link Lost */
 			if (data->in_sync) {
-				LOG_DBG("CRSF RC link active");
-			} else {
-				continue;
-			}
-		} else {
-			ret = k_sem_take(&data->report_lock, K_MSEC(CRSF_CONNECTION_TIMEOUT_MS));
-			if (ret == -EAGAIN) {
-				key = irq_lock();
-				data->in_sync = false;
-				data->rx_state = RX_STATE_SYNC;
-				irq_unlock(key);
-				connected_reported = false;
 				LOG_DBG("CRSF RC link lost");
-				continue;
+				data->in_sync = false;
+				connected_reported = false;
 			}
+			continue;
+		}
+
+		/* If we got here, we have a packet */
+		if (!data->in_sync) {
+			LOG_DBG("CRSF RC link active");
+			data->in_sync = true;
 		}
 
 		if (!connected_reported) {
@@ -231,106 +255,144 @@ static void input_crsf_input_report_thread(const struct device *dev, void *dummy
 			connected_reported = true;
 		}
 
-		/* Parse the data */
-		channel = 0;
-		value = 0;
-		bits_read = 0;
-
-		for (i = 0; i < 22; i++) {
-			/* Read the next byte */
-			unsigned char byte = crsf_channel_data[i];
-
-			/* Extract bits and construct the 11-bit value */
-			value |= byte << bits_read;
-			bits_read += 8;
-
-			/* Check if we've read enough bits to form a full 11-bit value */
-			while (bits_read >= 11) {
-				input_crsf_report(dev, channel,
-						  CRSF_TICKS_TO_US((int)(value & 0x7FF)));
-
-				/* Shift right to prepare for the next 11 bits */
-				value >>= 11;
-				bits_read -= 11;
-				channel++;
-			}
+		/* Validate CRC */
+		/* Note: frame[1] is Len. Packet is Sync(1)+Len(1)+Body(Len).
+		   CRC is at the end of Body. */
+		payload_len = frame[1];
+		calc_crc = crc8(&frame[2], payload_len - 1, 0xD5, 0x00, false);
+		if (calc_crc != frame[2 + payload_len - 1]) {
+			LOG_WRN("CRSF CRC mismatch");
+			continue;
 		}
 
+		/* Dispatch based on Type */
+		type = frame[2];
+
+		if (type == CRSF_TYPE_RC_CHANNELS) {
+			/* Parse the data */
+			uint8_t *crsf_channel_data = &frame[3];
+			channel = 0;
+			value = 0;
+			bits_read = 0;
+
+			for (i = 0; i < 22; i++) {
+				/* Read the next byte */
+				unsigned char byte = crsf_channel_data[i];
+
+				/* Extract bits and construct the 11-bit value */
+				value |= byte << bits_read;
+				bits_read += 8;
+
+				/* Check if we've read enough bits to form a full 11-bit value */
+				while (bits_read >= 11) {
+					input_crsf_report(dev, channel,
+							  CRSF_TICKS_TO_US((int)(value & 0x7FF)));
+
+					/* Shift right to prepare for the next 11 bits */
+					value >>= 11;
+					bits_read -= 11;
+					channel++;
+				}
+			}
+
 #ifdef CONFIG_INPUT_CRSF_SEND_SYNC
-		input_report(dev, 0, 0, 0, true, K_FOREVER);
+			input_report(dev, 0, 0, 0, true, K_FOREVER);
 #endif
+		} else if (type == CRSF_TYPE_LINK_STATS) {
+			if (payload_len - 2 == sizeof(struct crsf_link_stats)) {
+				memcpy(&data->link_stats, &frame[3],
+				       sizeof(struct crsf_link_stats));
+			}
+		}
 	}
 }
 
 /*
  * Byte Processor: Implements State Machine
- * Called by the Async Callback for every received byte
+ * Called by the Async Callback
  */
-static void crsf_process_byte(const struct device *dev, uint8_t byte)
+static void crsf_process_bytes(const struct device *dev, uint8_t *bytes, size_t len)
 {
 	struct input_crsf_data *const data = dev->data;
+	int offset;
 
-	switch (data->rx_state) {
-	case RX_STATE_SYNC:
-		/* logic: waiting for [SYNC, LEN, TYPE] sequence or just SYNC validation */
-		data->rd_data[data->xfer_bytes] = byte;
-		data->xfer_bytes++;
+	for (offset = 0; offset < len; offset++) {
+		switch (data->rx_state) {
+		case RX_STATE_SYNC:
+			/* logic: waiting for [SYNC, LEN, TYPE] sequence or just SYNC validation */
+			data->rd_data[data->xfer_bytes++] = bytes[offset];
 
-		if (data->rd_data[0] != CRSF_SYNC_BYTE) {
-			/* Reset if first byte isn't SYNC */
-			data->xfer_bytes = 0;
-		}
-		/* Once we have 2 bytes (SYNC, LEN), we know the payload length */
-		else if (data->xfer_bytes == 2) {
-			data->payload_len = byte;
-			/* Sanity check length to prevent overflow */
-			if (data->payload_len > CRSF_MAX_PAYLOAD_LEN || data->payload_len < 2) {
-				LOG_WRN("Invalid CRSF len: %d", data->payload_len);
+			if (data->rd_data[0] != CRSF_SYNC_BYTE) {
+				/* Reset if first byte isn't SYNC */
 				data->xfer_bytes = 0;
-			} else {
+				LOG_DBG("Out of sync %02X", bytes[offset]);
+			}
+			/* Once we have 2 bytes (SYNC, LEN), we know the payload length */
+			else if (data->xfer_bytes == 2) {
+				data->payload_remaining = bytes[offset];
+				/* Sanity check length to prevent overflow */
+				if (data->payload_remaining > CRSF_MAX_PAYLOAD_LEN ||
+				    data->payload_remaining < 2) {
+					LOG_DBG("Invalid CRSF len: %d", data->payload_remaining);
+					data->xfer_bytes = 0;
+				} else {
+					data->rx_state = RX_STATE_TYPE;
+				}
+			}
+			break;
+
+		case RX_STATE_TYPE:
+			if (is_crsf_whitelisted(bytes[offset])) {
 				data->rx_state = RX_STATE_DATA;
+				data->rd_data[data->xfer_bytes++] = bytes[offset];
+				data->payload_remaining--;
+			} else {
+				LOG_DBG("Ignoring Type 0x%02X", bytes[offset]);
+                data->rx_state = RX_STATE_IGNORE;
+				data->payload_remaining--;
 			}
-		}
-		break;
+			break;
 
-	case RX_STATE_DATA:
-		data->rd_data[data->xfer_bytes] = byte;
-		data->xfer_bytes++;
+		case RX_STATE_IGNORE:
+        {
+			data->payload_remaining--;
 
-		/* Target: Sync(1) + Len(1) + Payload(Len) */
-		if (data->xfer_bytes == (2 + data->payload_len)) {
-			uint8_t calc_crc =
-				crc8(&data->rd_data[2], data->rd_data[1] - 1, 0xD5, 0x00, false);
+            /* If we've skipped everything, reset to SYNC */
+            if (data->payload_remaining == 0) {
+                data->rx_state = RX_STATE_SYNC;
+                data->xfer_bytes = 0;
+            }
+            break;
+        }
 
-			if (calc_crc != data->rd_data[2 + data->rd_data[1] - 1]) {
-				LOG_WRN("CRSF CRC mismatch");
-			} else if (data->rd_data[2] == CRSF_TYPE_RC_CHANNELS) {
-				memcpy(data->crsf_frame, data->rd_data, data->xfer_bytes);
-				data->in_sync = true;
-				k_sem_give(&data->report_lock);
-			} else if (data->rd_data[2] == CRSF_TYPE_LINK_STATS &&
-				   data->xfer_bytes - 4 == sizeof(struct crsf_link_stats)) {
-				memcpy(&data->link_stats, &data->rd_data[3],
-				       sizeof(struct crsf_link_stats));
+		case RX_STATE_DATA:
+			data->rd_data[data->xfer_bytes++] = bytes[offset];
+			data->payload_remaining--;
+
+			/* Target: Sync(1) + Len(1) + Payload(Len) */
+			if (data->payload_remaining == 0) {
+				/* Push to Queue. k_msgq_put copies the data safely.
+				 * We push K_NO_WAIT because we are in an ISR.
+				 */
+				k_msgq_put(&data->rx_queue, data->rd_data, K_NO_WAIT);
+
+				/* Reset for next frame */
+				data->rx_state = RX_STATE_SYNC;
+				data->xfer_bytes = 0;
 			}
-
-			/* Reset for next frame */
-			data->rx_state = RX_STATE_SYNC;
-			data->xfer_bytes = 0;
+			break;
 		}
-		break;
 	}
 }
 
 /*
- * Async UART Callback
+ * Async UART Callback from ISR context
  */
 static void crsf_uart_callback(const struct device *uart_dev, struct uart_event *evt,
 			       void *user_data)
 {
 	const struct device *dev = user_data;
 	struct input_crsf_data *data = dev->data;
-	int i;
 
 	switch (evt->type) {
 	case UART_TX_DONE:
@@ -349,9 +411,7 @@ static void crsf_uart_callback(const struct device *uart_dev, struct uart_event 
 		arch_dcache_invd_range(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
 #endif
 		/* Process received data chunk */
-		for (i = 0; i < evt->data.rx.len; i++) {
-			crsf_process_byte(dev, evt->data.rx.buf[evt->data.rx.offset + i]);
-		}
+		crsf_process_bytes(dev, &evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
 		break;
 
 	case UART_RX_BUF_REQUEST:
@@ -415,7 +475,7 @@ static int input_crsf_init(const struct device *dev)
 		return ret;
 	}
 
-	k_sem_init(&data->report_lock, 0, 1);
+	k_msgq_init(&data->rx_queue, data->rx_queue_slab, CRSF_MAX_FRAME_LEN, CRSF_QUEUE_SIZE);
 
 	/* Start Async RX */
 	ret = uart_rx_enable(config->uart_dev, data->rx_buf_a, CRSF_RX_BUF_SIZE,
