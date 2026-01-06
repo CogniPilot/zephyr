@@ -72,6 +72,7 @@ struct paa3905_config {
 	struct gpio_dt_spec int_gpio;
 	int resolution;
 	bool led_control;
+	bool led_force_on;
 	uint32_t backup_timer_period;
 };
 
