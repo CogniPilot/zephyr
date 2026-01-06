@@ -204,7 +204,10 @@ static int paa3905_configure(const struct device *dev)
 		return err;
 	}
 
-	if (cfg->led_control) {
+	if (cfg->led_force_on) {
+		/* Force LED on (bright mode) */
+		led_control_regs[1].val = 0x30;
+	} else if (cfg->led_control) {
 		/* Enable sequence command */
 		led_control_regs[1].val = 0x0C;
 	}
@@ -317,6 +320,7 @@ static int paa3905_init(const struct device *dev)
 		.backup_timer_period = DT_PROP(DT_DRV_INST(inst), backup_timer_ms),		   \
 		.resolution = DT_PROP(DT_DRV_INST(inst), resolution),				   \
 		.led_control = DT_PROP_OR(DT_DRV_INST(inst), led_control, false),		   \
+		.led_force_on = DT_PROP_OR(DT_DRV_INST(inst), led_force_on, false),		   \
 	};											   \
 												   \
 	static struct paa3905_data paa3905_data_##inst = {					   \
