@@ -24,6 +24,14 @@ properties:
       Enable or disable the LED control feature, which allows the optical flow
       sensor to drive an external LED in order to provide illuminance when needed.
 
+  led-force-on:
+    type: boolean
+    default:
+    description: |
+      Force the LED to on state by writing 0x30 to register 0x6F (bright mode).
+      On boards with inverted LED control logic, this can be used to force the
+      LED off.
+
   int-gpios:
     type: phandle-array
     description: |
