@@ -12,6 +12,7 @@
 #include "icm4268x_reg.h"
 #include "icm4268x_rtio.h"
 #include "icm4268x_bus.h"
+#include "icm4268x_spi.h"
 
 LOG_MODULE_DECLARE(ICM4268X_RTIO, CONFIG_SENSOR_LOG_LEVEL);
 

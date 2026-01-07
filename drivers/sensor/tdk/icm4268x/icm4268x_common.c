@@ -382,6 +382,21 @@ int icm4268x_configure(const struct device *dev, struct icm4268x_cfg *cfg)
 		return -EINVAL;
 	}
 
+	/* Configure sensor data byte order.
+	 * BIT_SENSOR_DATA_ENDIAN = 0 for little-endian (LSB first)
+	 * BIT_SENSOR_DATA_ENDIAN = 1 for big-endian (MSB first, hardware default)
+	 * Note: This only affects data register output, not FIFO packet format.
+	 */
+	uint8_t intf_config0 = cfg->sensor_data_big_endian ? BIT_SENSOR_DATA_ENDIAN : 0;
+
+	LOG_DBG("INTF_CONFIG0 (0x%lx) 0x%x", FIELD_GET(REG_ADDRESS_MASK, REG_INTF_CONFIG0),
+		intf_config0);
+	res = icm4268x_spi_single_write(&dev_cfg->spi, REG_INTF_CONFIG0, intf_config0);
+	if (res != 0) {
+		LOG_ERR("Error writing INTF_CONFIG0");
+		return -EINVAL;
+	}
+
 	bool is_pin9_clkin = cfg->pin9_function == ICM4268X_PIN9_FUNCTION_CLKIN;
 	uint8_t intf_config1 = 0x91 | FIELD_PREP(BIT_RTC_MODE, is_pin9_clkin);
 

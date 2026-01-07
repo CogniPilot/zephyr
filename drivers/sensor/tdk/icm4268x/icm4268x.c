@@ -356,6 +356,8 @@ void icm4268x_unlock(const struct device *dev)
 		.interrupt1_fifo_full = false,					\
 		.pin9_function = ICM4268X_PIN9_FUNCTION_INT2,			\
 		.rtc_freq = 32000,						\
+		.sensor_data_big_endian =					\
+			DT_INST_PROP(inst, sensor_data_big_endian),		\
 	}
 
 #define ICM4268X_DEFINE_DATA(inst)                                                                 \

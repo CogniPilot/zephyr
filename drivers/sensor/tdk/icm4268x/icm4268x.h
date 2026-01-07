@@ -357,6 +357,9 @@ struct icm4268x_cfg {
 	bool interrupt1_fifo_full;
 	uint8_t pin9_function;
 	uint16_t rtc_freq;
+
+	/* Sensor data byte order: true = big-endian (hw default), false = little-endian */
+	bool sensor_data_big_endian;
 };
 
 struct icm4268x_trigger_entry {
