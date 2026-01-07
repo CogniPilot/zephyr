@@ -238,3 +238,14 @@ properties:
       generates an interrupt on INT1 each time new sensor data is available.
       This enables low-latency DRDY-based streaming mode where data is read
       directly from sensor registers instead of FIFO.
+
+  sensor-data-big-endian:
+    type: boolean
+    description: |
+      Configure the sensor to output data in big-endian byte order.
+      When present, 16-bit sensor data registers output MSB first,
+      which is the hardware default but requires byte-swapping on
+      little-endian CPUs like ARM.
+      When absent (default), sensor outputs little-endian (LSB first)
+      which matches ARM CPU byte order and avoids software byte-swapping.
+      Note: This only affects data register output, not FIFO packet format.

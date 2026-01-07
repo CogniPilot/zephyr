@@ -20,6 +20,7 @@ static int icm4268x_rtio_sample_fetch(const struct device *dev, int16_t readings
 {
 	uint8_t status;
 	const struct icm4268x_dev_cfg *cfg = dev->config;
+	struct icm4268x_dev_data *data = dev->data;
 	uint8_t *buffer = (uint8_t *)readings;
 
 	int res = icm4268x_spi_read(&cfg->spi, REG_INT_STATUS, &status, 1);
@@ -38,8 +39,14 @@ static int icm4268x_rtio_sample_fetch(const struct device *dev, int16_t readings
 		return res;
 	}
 
-	for (int i = 0; i < 7; i++) {
-		readings[i] = sys_le16_to_cpu((buffer[i * 2] << 8) | buffer[i * 2 + 1]);
+	/* Only byte-swap if sensor is configured for big-endian output.
+	 * When sensor_data_big_endian is false (default), the sensor outputs LSB first
+	 * which matches ARM byte order, so no swap needed.
+	 */
+	if (data->cfg.sensor_data_big_endian) {
+		for (int i = 0; i < 7; i++) {
+			readings[i] = (int16_t)((buffer[i * 2] << 8) | buffer[i * 2 + 1]);
+		}
 	}
 
 	return 0;
