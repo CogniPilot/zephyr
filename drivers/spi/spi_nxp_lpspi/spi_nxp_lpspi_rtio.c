@@ -19,7 +19,7 @@ struct lpspi_driver_data {
 	struct {
 		size_t words_to_clock;
 		size_t words_clocked_tx;
-		size_t words_clocked_rx;
+		size_t words_to_clock_rx;
 	} total;
 	struct {
 		struct rtio_sqe *sqe;
@@ -32,7 +32,7 @@ struct lpspi_driver_data {
 	uint8_t lpspi_op_mode;
 };
 
-static inline size_t get_sqe_clock_cycles(struct rtio_sqe *sqe)
+static inline size_t get_sqe_words_len(struct rtio_sqe *sqe)
 {
 	switch (sqe->op) {
 	case RTIO_OP_RX:
@@ -56,17 +56,39 @@ static inline struct rtio_sqe *get_next_sqe(struct rtio_sqe *sqe)
 	return &next_iodev_sqe->sqe;
 }
 
-static inline size_t get_total_sqe_clock_cycles(struct rtio_sqe *head)
+static inline void set_sqe_words_to_clock(struct rtio_sqe *head, struct lpspi_driver_data *data)
 {
-	size_t total_size = 0;
 	struct rtio_iodev_sqe *curr_iodev_sqe = CONTAINER_OF(head, struct rtio_iodev_sqe, sqe);
+	data->total.words_to_clock = 0;
+	data->total.words_to_clock_rx = 0;
+	data->total.words_clocked_tx = 0;
 
 	while (curr_iodev_sqe != NULL) {
-		total_size += get_sqe_clock_cycles(&curr_iodev_sqe->sqe);
+		switch (curr_iodev_sqe->sqe.op) {
+			case RTIO_OP_RX:
+				data->total.words_to_clock += curr_iodev_sqe->sqe.rx.buf_len;
+				data->total.words_to_clock_rx += curr_iodev_sqe->sqe.rx.buf_len;
+				break;
+			case RTIO_OP_TX:
+				data->total.words_to_clock += curr_iodev_sqe->sqe.tx.buf_len;
+				break;
+			case RTIO_OP_TINY_TX:
+				data->total.words_to_clock += curr_iodev_sqe->sqe.tiny_tx.buf_len;
+				break;
+			case RTIO_OP_TXRX:
+				data->total.words_to_clock += curr_iodev_sqe->sqe.txrx.buf_len;
+				data->total.words_to_clock_rx += curr_iodev_sqe->sqe.txrx.buf_len;
+				break;
+			default:
+				break;
+			}
 		curr_iodev_sqe = rtio_txn_next(curr_iodev_sqe);
 	}
 
-	return total_size;
+	data->total.words_to_clock =
+				DIV_ROUND_UP(data->total.words_to_clock, data->word_size_bytes);
+	data->total.words_to_clock_rx =
+				DIV_ROUND_UP(data->total.words_to_clock_rx, data->word_size_bytes);
 }
 
 static inline const uint8_t *get_sqe_tx_buf(struct rtio_sqe *sqe)
@@ -100,7 +122,7 @@ static inline bool lpspi_rtio_is_done_tx(const struct device *dev)
 	struct lpspi_data *data = dev->data;
 	struct lpspi_driver_data *lpspi_data = (struct lpspi_driver_data *)data->driver_data;
 
-	return lpspi_data->total.words_clocked_tx >= lpspi_data->total.words_to_clock;
+	return lpspi_data->total.words_to_clock == lpspi_data->total.words_clocked_tx;
 }
 
 static inline bool lpspi_rtio_is_done_rx(const struct device *dev)
@@ -108,7 +130,25 @@ static inline bool lpspi_rtio_is_done_rx(const struct device *dev)
 	struct lpspi_data *data = dev->data;
 	struct lpspi_driver_data *lpspi_data = (struct lpspi_driver_data *)data->driver_data;
 
-	return lpspi_data->total.words_clocked_rx >= lpspi_data->total.words_to_clock;
+	return lpspi_data->total.words_to_clock_rx == 0;
+}
+
+static inline bool lpspi_rtio_has_rx_data(const struct device *dev)
+{
+	struct lpspi_data *data = dev->data;
+	struct lpspi_driver_data *lpspi_data = (struct lpspi_driver_data *)data->driver_data;
+	struct rtio_sqe *sqe = lpspi_data->rx_curr.sqe;
+
+	return get_sqe_rx_buf(sqe) != NULL;
+}
+
+static inline bool lpspi_rtio_has_tx_data(const struct device *dev)
+{
+	struct lpspi_data *data = dev->data;
+	struct lpspi_driver_data *lpspi_data = (struct lpspi_driver_data *)data->driver_data;
+	struct rtio_sqe *sqe = lpspi_data->tx_curr.sqe;
+
+	return get_sqe_tx_buf(sqe) != NULL;
 }
 
 static void lpspi_rtio_iodev_complete(const struct device *dev, int status);
@@ -138,30 +178,31 @@ static inline bool lpspi_rtio_next_rx_fetch(const struct device *dev)
 	LPSPI_Type *base = (LPSPI_Type *)DEVICE_MMIO_NAMED_GET(dev, reg_base);
 	struct lpspi_data *data = dev->data;
 	struct lpspi_driver_data *lpspi_data = (struct lpspi_driver_data *)data->driver_data;
-	uint32_t fetch_len = rx_fifo_cur_len(base);
+	volatile uint32_t fetch_len = rx_fifo_cur_len(base);
 
 	if (fetch_len == 0) {
-		return false;
+		return true;
 	}
 
-	int bytes_left = fetch_len;
+	volatile int bytes_left = fetch_len;
 
 	while (bytes_left > 0 && lpspi_data->rx_curr.sqe) {
 		struct rtio_sqe *sqe = lpspi_data->rx_curr.sqe;
-		int curr_len = MIN(get_sqe_clock_cycles(sqe) - lpspi_data->rx_curr.words_clocked,
+		volatile int curr_len = MIN(get_sqe_words_len(sqe) - lpspi_data->rx_curr.words_clocked,
 				   bytes_left);
 		uint8_t *buf = get_sqe_rx_buf(sqe);
 
 		if (buf != NULL) {
 			lpspi_rtio_fetch_rx_fifo(dev, buf, lpspi_data->rx_curr.words_clocked,
 						 curr_len);
+			lpspi_data->total.words_to_clock_rx -= curr_len;
 		} else {
 			lpspi_rtio_empty_rx_fifo_nop(dev, curr_len);
 		}
 		bytes_left -= curr_len;
 		lpspi_data->rx_curr.words_clocked += curr_len;
 
-		if (lpspi_data->rx_curr.words_clocked >= get_sqe_clock_cycles(sqe)) {
+		if (lpspi_data->rx_curr.words_clocked >= get_sqe_words_len(sqe)) {
 			lpspi_data->rx_curr.sqe = get_next_sqe(sqe);
 			lpspi_data->rx_curr.words_clocked = 0;
 		}
@@ -170,9 +211,7 @@ static inline bool lpspi_rtio_next_rx_fetch(const struct device *dev)
 		LOG_WRN("rx returned with bytes_left: %d - fetch_len: %d", bytes_left, fetch_len);
 	}
 
-	lpspi_data->total.words_clocked_rx += fetch_len - bytes_left;
-
-	return lpspi_data->total.words_clocked_rx < lpspi_data->total.words_to_clock;
+	return lpspi_data->total.words_to_clock_rx != 0;
 }
 
 static inline void lpspi_rtio_fill_tx_fifo(const struct device *dev, const uint8_t *buf,
@@ -202,8 +241,7 @@ static inline bool lpspi_rtio_next_tx_fill(const struct device *dev)
 	struct lpspi_data *data = dev->data;
 	struct lpspi_driver_data *lpspi_data = (struct lpspi_driver_data *)data->driver_data;
 	int fifo_remaining_len = config->tx_fifo_size - tx_fifo_cur_len(base);
-	int fill_len = MIN(lpspi_data->total.words_to_clock - lpspi_data->total.words_clocked_tx,
-			   fifo_remaining_len);
+	int fill_len = MIN(lpspi_data->total.words_to_clock, fifo_remaining_len);
 
 	if (fill_len <= 0) {
 		return false;
@@ -213,7 +251,7 @@ static inline bool lpspi_rtio_next_tx_fill(const struct device *dev)
 
 	while (bytes_left > 0 && lpspi_data->tx_curr.sqe) {
 		struct rtio_sqe *sqe = lpspi_data->tx_curr.sqe;
-		int curr_len = MIN(get_sqe_clock_cycles(sqe) - lpspi_data->tx_curr.words_clocked,
+		int curr_len = MIN(get_sqe_words_len(sqe) - lpspi_data->tx_curr.words_clocked,
 				   bytes_left);
 		const uint8_t *buf = get_sqe_tx_buf(sqe);
 
@@ -226,7 +264,7 @@ static inline bool lpspi_rtio_next_tx_fill(const struct device *dev)
 		bytes_left -= curr_len;
 		lpspi_data->tx_curr.words_clocked += curr_len;
 
-		if (lpspi_data->tx_curr.words_clocked >= get_sqe_clock_cycles(sqe)) {
+		if (lpspi_data->tx_curr.words_clocked >= get_sqe_words_len(sqe)) {
 			lpspi_data->tx_curr.sqe = get_next_sqe(sqe);
 			lpspi_data->tx_curr.words_clocked = 0;
 		}
@@ -238,46 +276,78 @@ static inline bool lpspi_rtio_next_tx_fill(const struct device *dev)
 
 	lpspi_data->total.words_clocked_tx += fill_len - bytes_left;
 
+	if(lpspi_data->total.words_to_clock == lpspi_data->total.words_clocked_tx) {
+		base->TCR &= ~(LPSPI_TCR_CONT_MASK | LPSPI_TCR_CONTC_MASK);
+	}
+
 	return true;
 }
 
+// EMC_B1_02 GPIO1 02
+// 0x4012C000
+#include <fsl_gpio.h>
+
+static volatile int isr_count;
+
+
+
 static void lpspi_isr(const struct device *dev)
 {
+	GPIO_PinWrite((GPIO_Type *)0x4012C000, 2, 1);
+	isr_count++;
 	LPSPI_Type *base = (LPSPI_Type *)DEVICE_MMIO_NAMED_GET(dev, reg_base);
+	const struct lpspi_config *config = dev->config;
+	struct lpspi_data *data = dev->data;
+	struct lpspi_driver_data *lpspi_data = (struct lpspi_driver_data *)data->driver_data;
 	uint32_t status_flags = base->SR;
 
-	if (status_flags & LPSPI_SR_RDF_MASK && base->IER & LPSPI_IER_RDIE_MASK) {
-		if (!lpspi_rtio_next_rx_fetch(dev) && lpspi_rtio_is_done_rx(dev)) {
-			base->IER &= ~LPSPI_IER_RDIE_MASK;
-			/* Flush rx fifo */
-			base->CR |= LPSPI_CR_RRF_MASK;
-		}
-	}
-	if (status_flags & LPSPI_SR_TDF_MASK && base->IER & LPSPI_IER_TDIE_MASK) {
-		if (!lpspi_rtio_next_tx_fill(dev) && lpspi_rtio_is_done_tx(dev)) {
-			base->IER &= ~LPSPI_IER_TDIE_MASK;
-			/** We may be waiting on receiving the last chunk of RX data, hence changing
-			 * the RX FIFO watermark to trigger on every byte received from now on and
-			 * hence prevent leaving data unread.
-			 */
-			base->FCR = LPSPI_FCR_TXWATER(0) | LPSPI_FCR_RXWATER(0);
+	base->IER &= ~(LPSPI_IER_RDIE_MASK | LPSPI_IER_TDIE_MASK);
 
-			/** Due to stalling behavior on older LPSPI, if we know we already wrote
-			 * all the words into the fifo, then we need to end xfer manually by
-			 * writing TCR in order to get last bit clocked out on bus. So all we need
-			 * to do is touch the TCR by writing to fifo through TCR register and wait
-			 * for final RX interrupt.
-			 */
-			base->TCR = base->TCR;
+	if (!lpspi_rtio_is_done_rx(dev)) {
+		if(lpspi_rtio_next_rx_fetch(dev)) {
+			base->IER |= LPSPI_IER_RDIE_MASK;
+			if(lpspi_data->total.words_to_clock < config->rx_fifo_size) {
+				base->FCR = LPSPI_FCR_TXWATER(0) | LPSPI_FCR_RXWATER(lpspi_data->total.words_to_clock - 1);
+			}
 		}
 	}
 
+	if (!lpspi_rtio_is_done_tx(dev)) {
+		if(lpspi_rtio_next_tx_fill(dev)) {
+			base->IER |= LPSPI_IER_TDIE_MASK;
+		}
+	}
+
+	if (status_flags & LPSPI_SR_TCF_MASK) {
+	 	base->IER &= ~LPSPI_IER_TCIE_MASK;
+	}
+
+	//if ((base->IER & (LPSPI_IER_TDIE_MASK & LPSPI_IER_RDIE_MASK)) == 0) {
 	if (base->IER == 0) {
+		/* Flush rx fifo */
+		base->CR |= LPSPI_CR_RRF_MASK;
+
+		/** We may be waiting on receiving the last chunk of RX data, hence changing
+		 * the RX FIFO watermark to trigger on every byte received from now on and
+		 * hence prevent leaving data unread.
+		 */
+		base->FCR = LPSPI_FCR_TXWATER(0) | LPSPI_FCR_RXWATER(0);
+
+		/** Due to stalling behavior on older LPSPI, if we know we already wrote
+		 * all the words into the fifo, then we need to end xfer manually by
+		 * writing TCR in order to get last bit clocked out on bus. So all we need
+		 * to do is touch the TCR by writing to fifo through TCR register and wait
+		 * for final RX interrupt.
+		 */
+		base->TCR = base->TCR;
+
 		/** We're done both TX and RX as they each clear their Interrupt
 		 * enable bit once fully received. The transfer has completed.
 		 */
 		lpspi_rtio_iodev_complete(dev, 0);
 	}
+
+	GPIO_PinWrite((GPIO_Type *)0x4012C000, 2, 0);
 }
 
 static void lpspi_rtio_iodev_start(const struct device *dev)
@@ -323,17 +393,12 @@ static void lpspi_rtio_iodev_start(const struct device *dev)
 	base->IER = 0;
 	base->SR |= LPSPI_INTERRUPT_BITS;
 
-	size_t max_side_clocks = get_total_sqe_clock_cycles(sqe);
+	set_sqe_words_to_clock(sqe, lpspi_data);
 
-	if (max_side_clocks == 0) {
+	if (lpspi_data->total.words_to_clock == 0) {
 		ret = -EINVAL;
 		goto lpspi_rtio_iodev_start_on_error;
 	}
-
-	lpspi_data->total.words_to_clock =
-				DIV_ROUND_UP(max_side_clocks, lpspi_data->word_size_bytes);
-	lpspi_data->total.words_clocked_rx = 0;
-	lpspi_data->total.words_clocked_tx = 0;
 
 	lpspi_data->tx_curr.sqe = sqe;
 	lpspi_data->tx_curr.words_clocked = 0;
@@ -341,8 +406,7 @@ static void lpspi_rtio_iodev_start(const struct device *dev)
 	lpspi_data->rx_curr.sqe = sqe;
 	lpspi_data->rx_curr.words_clocked = 0;
 
-	LOG_DBG("Starting LPSPI transfer");
-	base->TCR = (base->TCR & ~(LPSPI_TCR_PCS_MASK)) |
+	base->TCR = (base->TCR & ~(LPSPI_TCR_PCS_MASK | LPSPI_TCR_RXMSK_MASK)) |
 		    LPSPI_TCR_PCS(spi_cfg->slave) |
 		    LPSPI_TCR_CONT_MASK;
 	spi_context_cs_control(&data->ctx, true);
@@ -350,16 +414,33 @@ static void lpspi_rtio_iodev_start(const struct device *dev)
 	/* tcr is written to tx fifo */
 	lpspi_wait_tx_fifo_empty(dev);
 
-	base->FCR = LPSPI_FCR_TXWATER(0) | LPSPI_FCR_RXWATER(config->rx_fifo_size / 2);
+	isr_count = 0;
+
+	if(lpspi_data->total.words_to_clock < config->rx_fifo_size) {
+		base->FCR = LPSPI_FCR_TXWATER(0) | LPSPI_FCR_RXWATER(lpspi_data->total.words_to_clock - 1);
+	} else {
+		base->FCR = LPSPI_FCR_TXWATER(0) | LPSPI_FCR_RXWATER(config->rx_fifo_size / 2);
+	}
+
 	base->CR |= LPSPI_CR_MEN_MASK;
+
+	base->TCR = base->TCR;
+	__DSB(); __ISB();
 
 	/* start the transfer sequence which are handled by irqs */
 	if (lpspi_rtio_next_tx_fill(dev) == false) {
 		ret = -EINVAL;
+		LOG_ERR("LPSPI FILL ERROR");
 		goto lpspi_rtio_iodev_start_on_error;
 	}
 
-	base->IER |= LPSPI_IER_TDIE_MASK | LPSPI_IER_RDIE_MASK;
+	//base->IER |= LPSPI_IER_RDIE_MASK | LPSPI_IER_TCIE_MASK;
+	if(lpspi_data->total.words_to_clock_rx > 0) {
+		base->IER |= LPSPI_IER_RDIE_MASK | LPSPI_IER_TCIE_MASK;
+	} else {
+		base->TCR |= LPSPI_TCR_RXMSK_MASK;
+		base->IER |= LPSPI_IER_TCIE_MASK;
+	}
 	return;
 
 lpspi_rtio_iodev_start_on_error:
@@ -380,7 +461,7 @@ static void lpspi_rtio_iodev_complete(const struct device *dev, int status)
 	if (!(ctx->config->operation & SPI_HOLD_ON_CS)) {
 		spi_context_cs_control(&data->ctx, false);
 	}
-	base->TCR &= ~(LPSPI_TCR_CONT_MASK | LPSPI_TCR_CONTC_MASK);
+	//
 	/* don't need to wait for TCR since we are at end of xfer + in IRQ context */
 
 	if (spi_rtio_complete(rtio_ctx, status)) {
@@ -420,6 +501,8 @@ static int lpspi_rtio_init(const struct device *dev)
 	struct lpspi_driver_data *drv_data = (struct lpspi_driver_data *)data->driver_data;
 	struct spi_rtio *rtio_ctx = drv_data->rtio_ctx;
 	int err = 0;
+
+	((GPIO_Type *)0x4012C000)->GDIR |= (1 << 2);
 
 	err = spi_nxp_init_common(dev);
 	if (err) {
