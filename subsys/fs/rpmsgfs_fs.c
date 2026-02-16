@@ -580,24 +580,23 @@ static int rpmsgfs_statvfs(struct fs_mount_t *mountp, const char *absolute_path,
 
 	struct rpmsgfs_s *priv = mountp->fs_data;
 
-	struct rpmsgfs_fstat_s *msg;
+	struct rpmsgfs_statfs_s *msg;
 	uint32_t space;
 	size_t msg_size;
 
-	char path[MAX_PATH_LEN + 1];
-	ssize_t path_size = rpmsgfs_get_remote_path(absolute_path, mountp, path);
-	if (path_size < 0) {
-		return path_size;
-	}
-	msg_size = sizeof(*msg) + path_size + 1;
+	/* TODO: Pass mountpoint in pathname. Using this field is currently broken
+	 * on the rpmsgfs linux driver since it only accepts files and no
+	 * directories. For now an empty pathname is passed instead.
+	 */
+
+	msg_size = sizeof(*msg) + 1;
 
 	msg = rpmsg_get_tx_payload_buffer(&priv->ept, &space, true);
 	if ((!msg) || (msg_size > space)) {
 		return -ENOMEM;
 	}
 
-	strncpy(msg->pathname, path, path_size);
-	msg->pathname[path_size] = 0;
+	msg->pathname[0] = 0;
 
 	return rpmsgfs_send_recv(priv, RPMSGFS_STATFS, false, (struct rpmsgfs_header_s *)msg,
 				 msg_size, stat);
