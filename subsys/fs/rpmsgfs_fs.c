@@ -154,19 +154,6 @@ static int rpmsgfs_convert_to_rpmsgfs_flags(fs_mode_t zephyr_mode)
 	return flags;
 }
 
-static int rpmsgfs_convert_to_rpmsgfs_mode(fs_mode_t zephyr_mode)
-{
-	int mode = 0;
-	if (zephyr_mode & FS_O_READ) {
-		mode |= RPMSGFS_FMODE_READ;
-	}
-	if (zephyr_mode & FS_O_WRITE) {
-		mode |= RPMSGFS_FMODE_WRITE;
-	}
-
-	return mode;
-}
-
 static int rpmsgfs_open(struct fs_file_t *zfp, const char *file_name, fs_mode_t mode)
 {
 	LOG_INF("%s", __func__);
@@ -193,7 +180,7 @@ static int rpmsgfs_open(struct fs_file_t *zfp, const char *file_name, fs_mode_t 
 	}
 
 	msg->flags = rpmsgfs_convert_to_rpmsgfs_flags(mode);
-	msg->mode = rpmsgfs_convert_to_rpmsgfs_mode(mode);
+	msg->mode = RPMSGFS_DEFAULT_MODE;
 	strncpy(msg->pathname, path, path_size);
 	msg->pathname[path_size] = 0;
 

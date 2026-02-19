@@ -24,7 +24,7 @@
 #define RPMSGFS_CHSTAT    22
 
 /*
- * RPMSGFS file mode
+ * RPMSGFS file flags
  */
 
 #define RPMSGFS_O_RDONLY    BIT(0)
@@ -58,8 +58,7 @@
 #define RPMSGFS_S_IFSOCK (12 << 12)
 #define RPMSGFS_S_IFMT   (15 << 12)
 
-#define RPMSGFS_FMODE_READ  0x1
-#define RPMSGFS_FMODE_WRITE 0x2
+#define RPMSGFS_DEFAULT_MODE 0644
 
 struct iovec {
 	void *iov_base; /* Base address of I/O memory region */
