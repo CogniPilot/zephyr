@@ -211,10 +211,15 @@ __weak void clock_init(void)
 		CLOCK_InitArmPll(&armPllConfig);
 	}
 
-	if (IS_ENABLED(CONFIG_ETH_NXP_ENET)) {
+	if (IS_ENABLED(CONFIG_ETH_NXP_ENET) || IS_ENABLED(CONFIG_SPI_NXP_LPSPI)) {
 		/* For default clocking, we will only use pll1 for div2 output for enet */
 		static const clock_sys_pll1_config_t sysPll1Config = {
+#ifdef CONFIG_ETH_NXP_ENET
 			.pllDiv2En = true,
+#endif
+#ifdef CONFIG_SPI_NXP_LPSPI
+			.pllDiv5En = true,
+#endif
 		};
 		CLOCK_InitSysPll1(&sysPll1Config);
 	} else if (!IS_ENABLED(CONFIG_SECOND_CORE_MCUX)) {
@@ -322,7 +327,7 @@ __weak void clock_init(void)
 	CLOCK_SetRootClock(kCLOCK_Root_Bus_Lpsr, &rootCfg);
 #elif defined(CONFIG_SOC_MIMXRT1176_CM7) || defined(CONFIG_SOC_MIMXRT1166_CM7)
 	rootCfg.mux = kCLOCK_BUS_LPSR_ClockRoot_MuxSysPll3Out;
-	rootCfg.div = 2;
+	rootCfg.div = 3;
 	CLOCK_SetRootClock(kCLOCK_Root_Bus_Lpsr, &rootCfg);
 #endif
 
@@ -446,10 +451,35 @@ __weak void clock_init(void)
 #endif
 
 #ifdef CONFIG_SPI_NXP_LPSPI
-	/* Configure input clock to be able to reach the datasheet specified band rate. */
-	rootCfg.mux = kCLOCK_LPSPI1_ClockRoot_MuxOscRc400M;
-	rootCfg.div = 1;
+	/* PLL1 200 / 2 = 100MHz */
+	rootCfg.mux = kCLOCK_LPSPI1_ClockRoot_MuxSysPll1Div5;
+	rootCfg.div = 2;
 	CLOCK_SetRootClock(kCLOCK_Root_Lpspi1, &rootCfg);
+
+	/* PLL1 200 / 2 = 100MHz */
+	rootCfg.mux = kCLOCK_LPSPI2_ClockRoot_MuxSysPll1Div5;
+	rootCfg.div = 2;
+	CLOCK_SetRootClock(kCLOCK_Root_Lpspi2, &rootCfg);
+
+	/* PLL1 200 / 2 = 100MHz */
+	rootCfg.mux = kCLOCK_LPSPI3_ClockRoot_MuxSysPll1Div5;
+	rootCfg.div = 2;
+	CLOCK_SetRootClock(kCLOCK_Root_Lpspi3, &rootCfg);
+
+	/* PLL1 200 / 2 = 100MHz */
+	rootCfg.mux = kCLOCK_LPSPI4_ClockRoot_MuxSysPll1Div5;
+	rootCfg.div = 2;
+	CLOCK_SetRootClock(kCLOCK_Root_Lpspi4, &rootCfg);
+
+	/* PLL3 480 / 4 = 120MHz */
+	rootCfg.mux = kCLOCK_LPSPI5_ClockRoot_MuxSysPll3Out;
+	rootCfg.div = 4;
+	CLOCK_SetRootClock(kCLOCK_Root_Lpspi5, &rootCfg);
+
+	/* PLL3 480 / 4 = 120MHz */
+	rootCfg.mux = kCLOCK_LPSPI6_ClockRoot_MuxSysPll3Out;
+	rootCfg.div = 4;
+	CLOCK_SetRootClock(kCLOCK_Root_Lpspi6, &rootCfg);
 #endif
 
 #ifdef CONFIG_VIDEO_MCUX_MIPI_CSI2RX
