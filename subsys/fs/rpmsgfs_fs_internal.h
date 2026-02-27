@@ -60,6 +60,24 @@
 
 #define RPMSGFS_DEFAULT_MODE 0644
 
+/*
+ * RPMSGFS d_type file flags
+ */
+
+#define RPMSGFS_DT_UNKNOWN  0
+#define RPMSGFS_DT_FIFO     1
+#define RPMSGFS_DT_CHR      2
+#define RPMSGFS_DT_SEM      3
+#define RPMSGFS_DT_DIR      4
+#define RPMSGFS_DT_MQ       5
+#define RPMSGFS_DT_BLK      6
+#define RPMSGFS_DT_SHM      7
+#define RPMSGFS_DT_REG      8
+#define RPMSGFS_DT_MTD      9
+#define RPMSGFS_DT_LNK      10
+#define RPMSGFS_DT_SOCK     12
+
+
 struct iovec {
 	void *iov_base; /* Base address of I/O memory region */
 	size_t iov_len; /* Size of the memory pointed to by iov_base */

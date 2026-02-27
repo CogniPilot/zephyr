@@ -621,7 +621,7 @@ static int rpmsgfs_readdir_handler(struct rpmsg_endpoint *ept, void *data, size_
 	cookie->result = header->result;
 	if (cookie->result >= 0) {
 		strncpy(entry->name, rsp->name, sizeof(entry->name) - 1);
-		entry->type = rsp->type;
+		entry->type = rsp->type == RPMSGFS_DT_DIR ? FS_DIR_ENTRY_DIR : FS_DIR_ENTRY_FILE;
 		entry->size = 0; /* cannot fill in size, sorry.. */
 	}
 
