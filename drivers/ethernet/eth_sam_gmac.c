@@ -1838,9 +1838,7 @@ static void eth0_iface_init(struct net_if *iface)
 	int result;
 	int i;
 
-	if (dev_data->iface == NULL) {
-		dev_data->iface = iface;
-	}
+	dev_data->iface = iface;
 
 	ethernet_init(iface);
 
