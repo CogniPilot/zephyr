@@ -129,10 +129,19 @@ static void icm45686_complete_handler(struct rtio *ctx,
 	const struct device *dev = (const struct device *)arg;
 	struct icm45686_data *data = dev->data;
 	const struct icm45686_config *cfg = dev->config;
-	const struct sensor_read_config *read_cfg = data->stream.iodev_sqe->sqe.iodev->data;
 	const bool wm_gt_ths = !cfg->settings.fifo_watermark_equals;
+	struct rtio_iodev_sqe *iodev_sqe = data->stream.iodev_sqe;
+	const struct sensor_read_config *read_cfg;
 	uint8_t int_status = data->stream.data.int_status;
 	int err;
+
+	if (iodev_sqe == NULL) {
+		LOG_WRN("Completion triggered with no active streaming submission");
+		(void)atomic_set(&data->stream.state, ICM45686_STREAM_OFF);
+		return;
+	}
+
+	read_cfg = iodev_sqe->sqe.iodev->data;
 
 	if (result < 0) {
 		LOG_ERR("Data readout failed: %d", result);
@@ -147,7 +156,7 @@ static void icm45686_complete_handler(struct rtio *ctx,
 	struct icm45686_encoded_data *buf;
 	uint32_t buf_len;
 
-	err = rtio_sqe_rx_buf(data->stream.iodev_sqe, 0, 0, (uint8_t **)&buf, &buf_len);
+	err = rtio_sqe_rx_buf(iodev_sqe, 0, 0, (uint8_t **)&buf, &buf_len);
 	CHECKIF(err != 0 || buf_len == 0) {
 		LOG_ERR("Failed to acquire buffer for encoded data: %d, len: %d", err, buf_len);
 		icm45686_stream_result(dev, -ENOMEM);
@@ -195,13 +204,13 @@ static void icm45686_event_handler(const struct device *dev)
 {
 	struct icm45686_data *data = dev->data;
 	const struct icm45686_config *cfg = dev->config;
-	const struct sensor_read_config *read_cfg = data->stream.iodev_sqe->sqe.iodev->data;
+	struct rtio_iodev_sqe *iodev_sqe = data->stream.iodev_sqe;
+	const struct sensor_read_config *read_cfg;
 	uint8_t val = 0;
 	uint64_t cycles;
 	int err;
 
-	if (!data->stream.iodev_sqe ||
-	    FIELD_GET(RTIO_SQE_CANCELED, data->stream.iodev_sqe->sqe.flags)) {
+	if (!iodev_sqe || FIELD_GET(RTIO_SQE_CANCELED, iodev_sqe->sqe.flags)) {
 		LOG_WRN("Callback triggered with no streaming submission - Disabling interrupts");
 		(void)atomic_set(&data->stream.state, ICM45686_STREAM_OFF);
 		(void)gpio_pin_interrupt_configure_dt(&cfg->int_gpio, GPIO_INT_DISABLE);
@@ -220,6 +229,8 @@ static void icm45686_event_handler(const struct device *dev)
 		data->stream.settings.enabled.fifo_full = false;
 		return;
 	}
+
+	read_cfg = iodev_sqe->sqe.iodev->data;
 
 	if (atomic_cas(&data->stream.state, ICM45686_STREAM_ON, ICM45686_STREAM_BUSY) == false) {
 		LOG_WRN("Event handler triggered while a stream is in progress! Ignoring");
@@ -269,7 +280,7 @@ static void icm45686_event_handler(const struct device *dev)
 		 * flush the data or just report the event.
 		 */
 	}
-	err = rtio_sqe_rx_buf(data->stream.iodev_sqe, buf_len_required, buf_len_required,
+	err = rtio_sqe_rx_buf(iodev_sqe, buf_len_required, buf_len_required,
 			      (uint8_t **)&buf, &buf_len);
 	CHECKIF(err != 0) {
 		LOG_ERR("Failed to acquire buffer (len: %d) for encoded data: %d. Please revisit"
@@ -332,7 +343,7 @@ static void icm45686_event_handler(const struct device *dev)
 	rtio_sqe_prep_callback_no_cqe(complete_sqe,
 				      icm45686_complete_handler,
 				      (void *)dev,
-				      data->stream.iodev_sqe);
+				      iodev_sqe);
 
 	rtio_submit(data->bus.rtio.ctx, 0);
 }
