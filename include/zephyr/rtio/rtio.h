@@ -962,8 +962,16 @@ static inline void rtio_block_pool_free(struct rtio *r, void *buf, uint32_t buf_
 		.data = (iodev_data),				\
 	}
 
+#if CONFIG_RTIO_SQE_PLACEMENT_DTCM
+#define RTIO_SQE_MEM Z_GENERIC_SECTION(".dtcm_bss") static
+#elif defined(CONFIG_RTIO_SQE_PLACEMENT_NOCACHE)
+#define RTIO_SQE_MEM __nocache static
+#else
+#define RTIO_SQE_MEM static
+#endif
+
 #define Z_RTIO_SQE_POOL_DEFINE(name, sz)			\
-	static struct rtio_iodev_sqe CONCAT(_sqe_pool_, name)[sz];	\
+	RTIO_SQE_MEM struct rtio_iodev_sqe CONCAT(_sqe_pool_, name)[sz];	\
 	STRUCT_SECTION_ITERABLE(rtio_sqe_pool, name) = {	\
 		.free_q = MPSC_INIT((name.free_q)),	\
 		.pool_size = sz,				\
@@ -990,7 +998,13 @@ static inline void rtio_block_pool_free(struct rtio *r, void *buf, uint32_t buf_
  * If CONFIG_USERSPACE is disabled, allocate as plain static:
  *   static
  */
+#if CONFIG_RTIO_BLOCK_POOL_PLACEMENT_DTCM
+#define RTIO_BMEM Z_GENERIC_SECTION(".dtcm_bss") static
+#elif defined(CONFIG_RTIO_BLOCK_POOL_PLACEMENT_NOCACHE)
+#define RTIO_BMEM __nocache static
+#else
 #define RTIO_BMEM COND_CODE_1(CONFIG_USERSPACE, (K_APP_BMEM(rtio_partition) static), (static))
+#endif
 
 /**
  * @brief Allocate as initialized memory if available
@@ -1001,7 +1015,13 @@ static inline void rtio_block_pool_free(struct rtio *r, void *buf, uint32_t buf_
  * If CONFIG_USERSPACE is disabled, allocate as plain static:
  *   static
  */
+#if CONFIG_RTIO_BLOCK_POOL_PLACEMENT_DTCM
+#define RTIO_DMEM Z_GENERIC_SECTION(".dtcm_data") static
+#elif defined(CONFIG_RTIO_BLOCK_POOL_PLACEMENT_NOCACHE)
+#define RTIO_DMEM __nocache_load static
+#else
 #define RTIO_DMEM COND_CODE_1(CONFIG_USERSPACE, (K_APP_DMEM(rtio_partition) static), (static))
+#endif
 
 #define Z_RTIO_BLOCK_POOL_DEFINE(name, blk_sz, blk_cnt, blk_align)                                 \
 	RTIO_BMEM uint8_t __aligned(WB_UP(blk_align))                                              \
