@@ -14,7 +14,30 @@ LOG_MODULE_DECLARE(spi_lpspi, CONFIG_SPI_LOG_LEVEL);
 #include "spi_nxp_lpspi_priv.h"
 #ifdef CONFIG_SPI_NXP_LPSPI_RTIO_DMA
 #include <zephyr/drivers/dma.h>
+#include <zephyr/cache.h>
+#include <zephyr/sys/barrier.h>
 #define LPSPI_RTIO_DMA_BLK_SIZE 4
+
+#if defined(CONFIG_DCACHE) && !defined(CONFIG_RTIO_SQE_PLACEMENT_DTCM) &&                          \
+	!defined(CONFIG_RTIO_SQE_PLACEMENT_NOCACHE)
+#define RTIO_SQE_CACHED 1
+#endif
+
+#define Z_SRAM_NODE DT_CHOSEN(zephyr_sram)
+
+#if DT_NODE_EXISTS(Z_SRAM_NODE) && DT_NODE_HAS_COMPAT(Z_SRAM_NODE, nxp_imx_dtcm)
+#define RTIO_SRAM_IS_DTCM 1
+#else
+#define RTIO_SRAM_IS_DTCM 0
+#endif
+
+#if !RTIO_SRAM_IS_DTCM && defined(CONFIG_DCACHE) &&                                                \
+	!defined(CONFIG_RTIO_BLOCK_POOL_PLACEMENT_DTCM) &&                                         \
+	!defined(CONFIG_RTIO_BLOCK_POOL_PLACEMENT_NOCACHE)
+#error "SPI RTIO DMA cannot use cached RTIO block pool memory (D-cache enabled). " \
+"Select RTIO_BLOCK_POOL_PLACEMENT_DTCM or RTIO_BLOCK_POOL_PLACEMENT_NOCACHE, " \
+"or disable DMA/D-cache."
+#endif
 
 /* dummy memory used for transferring NOP when tx buf is null */
 static uint32_t tx_nop_val; /* check compliance says no init to 0, but should be 0 in bss */
@@ -309,6 +332,11 @@ static int lpspi_rtio_dma_tx_load(const struct device *dev, struct rtio_sqe *sqe
 			blk_cfg->source_addr_adj = DMA_ADDR_ADJ_NO_CHANGE;
 		} else {
 			blk_cfg->source_address = (uint32_t)buf;
+#if RTIO_SQE_CACHED
+			if (sqe->op == RTIO_OP_TINY_TX) {
+				sys_cache_data_flush_range((void *)sqe, sizeof(sqe));
+			}
+#endif
 		}
 
 		blk_cfg->dest_address = (uint32_t) & (base->TDR);
