@@ -63,8 +63,6 @@ static inline size_t get_sqe_words_len(struct rtio_sqe *sqe)
 		return sqe->tiny_tx.buf_len;
 	case RTIO_OP_TXRX:
 		return sqe->txrx.buf_len;
-	case RTIO_OP_NANO_TXRX:
-		return sqe->nano_txrx.buf_len;
 	default:
 		return 0;
 	}
@@ -101,10 +99,6 @@ static inline void set_sqe_words_to_clock(struct rtio_sqe *head, struct lpspi_dr
 			data->total.words_to_clock += curr_iodev_sqe->sqe.txrx.buf_len;
 			data->total.words_to_clock_rx += curr_iodev_sqe->sqe.txrx.buf_len;
 			break;
-		case RTIO_OP_NANO_TXRX:
-			data->total.words_to_clock += curr_iodev_sqe->sqe.nano_txrx.buf_len;
-			data->total.words_to_clock_rx += curr_iodev_sqe->sqe.nano_txrx.buf_len;
-			break;
 		default:
 			break;
 		}
@@ -126,8 +120,6 @@ static inline const uint8_t *get_sqe_tx_buf(struct rtio_sqe *sqe)
 		return sqe->tiny_tx.buf;
 	case RTIO_OP_TXRX:
 		return sqe->txrx.tx_buf;
-	case RTIO_OP_NANO_TXRX:
-		return sqe->nano_txrx.tx;
 	default:
 		return NULL;
 	}
@@ -140,8 +132,6 @@ static inline uint8_t *get_sqe_rx_buf(struct rtio_sqe *sqe)
 		return sqe->rx.buf;
 	case RTIO_OP_TXRX:
 		return sqe->txrx.rx_buf;
-	case RTIO_OP_NANO_TXRX:
-		return sqe->nano_txrx.rx_buf;
 	default:
 		return NULL;
 	}
@@ -598,23 +588,11 @@ static void lpspi_rtio_iodev_start(const struct device *dev)
 		goto lpspi_rtio_iodev_start_on_error;
 	}
 
-	if (sqe->op == RTIO_OP_NANO_TXRX) {
-		lpspi_rtio_next_tx_fill(dev);
-		while (!(base->SR & LPSPI_SR_RDF_MASK))
-			;
-		if (sqe->nano_txrx.rx_skip > 0) {
-			lpspi_rtio_empty_rx_fifo_nop(base, sqe->nano_txrx.rx_skip);
-		}
-		lpspi_rtio_fetch_rx_fifo(base, get_sqe_rx_buf(sqe), 0,
-					 sqe->nano_txrx.buf_len - sqe->nano_txrx.rx_skip);
-		spi_rtio_complete(lpspi_data->rtio_ctx, 0);
+	if (lpspi_data->total.words_to_clock_rx > 0) {
+		base->IER = LPSPI_IER_RDIE_MASK | LPSPI_IER_TCIE_MASK;
 	} else {
-		if (lpspi_data->total.words_to_clock_rx > 0) {
-			base->IER = LPSPI_IER_RDIE_MASK | LPSPI_IER_TCIE_MASK;
-		} else {
-			base->TCR |= LPSPI_TCR_RXMSK_MASK;
-			base->IER = LPSPI_IER_TDIE_MASK | LPSPI_IER_TCIE_MASK;
-		}
+		base->TCR |= LPSPI_TCR_RXMSK_MASK;
+		base->IER = LPSPI_IER_TDIE_MASK | LPSPI_IER_TCIE_MASK;
 	}
 	return;
 
