@@ -1,5 +1,6 @@
 #include <zephyr/kernel.h>
 
+#define RPMSGFS_INIT      0
 #define RPMSGFS_OPEN      1
 #define RPMSGFS_CLOSE     2
 #define RPMSGFS_READ      3

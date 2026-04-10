@@ -693,20 +693,27 @@ static int rpmsgfs_read_handler(struct rpmsg_endpoint *ept, void *data, size_t l
 	return 0;
 }
 
+static int rpmsgfs_unused_handler(struct rpmsg_endpoint *ept, void *data, size_t len, uint32_t src,
+				void *priv)
+{
+	return 0;
+}
+
 static const rpmsg_ept_cb g_rpmsgfs_handler[] = {
+	[RPMSGFS_INIT] = rpmsgfs_unused_handler, /* Not required */
 	[RPMSGFS_OPEN] = rpmsgfs_default_handler,
 	[RPMSGFS_CLOSE] = rpmsgfs_default_handler,
 	[RPMSGFS_READ] = rpmsgfs_read_handler,
 	[RPMSGFS_WRITE] = rpmsgfs_default_handler,
 	[RPMSGFS_LSEEK] = rpmsgfs_default_handler,
-	/* [RPMSGFS_IOCTL] = rpmsgfs_ioctl_handler, */
+	[RPMSGFS_IOCTL] = rpmsgfs_unused_handler, /* Not supported in zephyr */
 	[RPMSGFS_SYNC] = rpmsgfs_default_handler,
-	/* [RPMSGFS_DUP] = rpmsgfs_default_handler, */
-	/* [RPMSGFS_FSTAT] = rpmsgfs_stat_handler, */
+	[RPMSGFS_DUP] = rpmsgfs_unused_handler, /* Not supported in zephyr */
+	[RPMSGFS_FSTAT] = rpmsgfs_unused_handler, /* Not supported in zephyr */
 	[RPMSGFS_FTRUNCATE] = rpmsgfs_default_handler,
 	[RPMSGFS_OPENDIR] = rpmsgfs_default_handler,
 	[RPMSGFS_READDIR] = rpmsgfs_readdir_handler,
-	/* [RPMSGFS_REWINDDIR] = rpmsgfs_default_handler, */
+	[RPMSGFS_REWINDDIR] = rpmsgfs_unused_handler, /* Not supported in zephyr */
 	[RPMSGFS_CLOSEDIR] = rpmsgfs_default_handler,
 	[RPMSGFS_STATFS] = rpmsgfs_statfs_handler,
 	[RPMSGFS_UNLINK] = rpmsgfs_default_handler,
@@ -714,8 +721,8 @@ static const rpmsg_ept_cb g_rpmsgfs_handler[] = {
 	[RPMSGFS_RMDIR] = rpmsgfs_default_handler,
 	[RPMSGFS_RENAME] = rpmsgfs_default_handler,
 	[RPMSGFS_STAT] = rpmsgfs_stat_handler,
-	/* [RPMSGFS_FCHSTAT]   = rpmsgfs_default_handler, */
-	/* [RPMSGFS_CHSTAT]    = rpmsgfs_default_handler, */
+	[RPMSGFS_FCHSTAT] = rpmsgfs_unused_handler, /* Not supported in zephyr */
+	[RPMSGFS_CHSTAT] = rpmsgfs_unused_handler, /* Not supported in zephyr */
 };
 
 static int rpmsgfs_callback(struct rpmsg_endpoint *ept, void *data, size_t len, uint32_t src,
