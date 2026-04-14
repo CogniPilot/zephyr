@@ -41,6 +41,15 @@
 	COND_CODE_1(CONFIG_SHELL_THREAD_PRIORITY_OVERRIDE, \
 			(CONFIG_SHELL_THREAD_PRIORITY), (K_LOWEST_APPLICATION_THREAD_PRIO))
 
+#define SHELL_CTRL_C_HANDLER_MAX 8
+
+struct shell_ctrl_c_handler_entry {
+	shell_ctrl_c_handler_t handler;
+	void *user_data;
+};
+
+static struct shell_ctrl_c_handler_entry g_shell_ctrl_c_handlers[SHELL_CTRL_C_HANDLER_MAX];
+
 BUILD_ASSERT(SHELL_THREAD_PRIORITY >=
 		  K_HIGHEST_APPLICATION_THREAD_PRIO
 		&& SHELL_THREAD_PRIORITY <= K_LOWEST_APPLICATION_THREAD_PRIO,
@@ -57,6 +66,88 @@ static void cmd_buffer_clear(const struct shell *sh)
 	sh->ctx->cmd_buff[0] = '\0'; /* clear command buffer */
 	sh->ctx->cmd_buff_pos = 0;
 	sh->ctx->cmd_buff_len = 0;
+}
+
+__weak void shell_ctrl_c(const struct shell *sh)
+{
+	ARG_UNUSED(sh);
+}
+
+int shell_ctrl_c_register(shell_ctrl_c_handler_t handler, void *user_data)
+{
+	int free_idx = -1;
+	unsigned int key;
+
+	if (handler == NULL) {
+		return -EINVAL;
+	}
+
+	key = irq_lock();
+
+	for (size_t i = 0; i < ARRAY_SIZE(g_shell_ctrl_c_handlers); ++i) {
+		if (g_shell_ctrl_c_handlers[i].handler == handler &&
+		    g_shell_ctrl_c_handlers[i].user_data == user_data) {
+			irq_unlock(key);
+			return -EALREADY;
+		}
+
+		if (free_idx < 0 && g_shell_ctrl_c_handlers[i].handler == NULL) {
+			free_idx = (int)i;
+		}
+	}
+
+	if (free_idx < 0) {
+		irq_unlock(key);
+		return -ENOMEM;
+	}
+
+	g_shell_ctrl_c_handlers[free_idx].handler = handler;
+	g_shell_ctrl_c_handlers[free_idx].user_data = user_data;
+	irq_unlock(key);
+
+	return 0;
+}
+
+int shell_ctrl_c_unregister(shell_ctrl_c_handler_t handler, void *user_data)
+{
+	unsigned int key;
+
+	if (handler == NULL) {
+		return -EINVAL;
+	}
+
+	key = irq_lock();
+
+	for (size_t i = 0; i < ARRAY_SIZE(g_shell_ctrl_c_handlers); ++i) {
+		if (g_shell_ctrl_c_handlers[i].handler == handler &&
+		    g_shell_ctrl_c_handlers[i].user_data == user_data) {
+			g_shell_ctrl_c_handlers[i].handler = NULL;
+			g_shell_ctrl_c_handlers[i].user_data = NULL;
+			irq_unlock(key);
+			return 0;
+		}
+	}
+
+	irq_unlock(key);
+	return -ENOENT;
+}
+
+static void shell_ctrl_c_dispatch(const struct shell *sh)
+{
+	struct shell_ctrl_c_handler_entry handlers[ARRAY_SIZE(g_shell_ctrl_c_handlers)];
+	unsigned int key;
+
+	shell_ctrl_c(sh);
+
+	key = irq_lock();
+	memcpy(handlers, g_shell_ctrl_c_handlers, sizeof(handlers));
+	irq_unlock(key);
+
+	for (size_t i = 0; i < ARRAY_SIZE(handlers); ++i) {
+		if (handlers[i].handler != NULL) {
+			handlers[i].handler(sh, handlers[i].user_data);
+		}
+	}
 }
 
 static void shell_internal_help_print(const struct shell *sh)
@@ -899,6 +990,7 @@ static void ctrl_metakeys_handle(const struct shell *sh, char data)
 			z_cursor_next_line_move(sh);
 		}
 		z_flag_history_exit_set(sh, true);
+		shell_ctrl_c_dispatch(sh);
 		state_set(sh, SHELL_STATE_ACTIVE);
 		break;
 

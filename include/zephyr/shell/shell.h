@@ -1159,6 +1159,53 @@ int shell_start(const struct shell *sh);
 int shell_stop(const struct shell *sh);
 
 /**
+ * @brief Callback invoked when a shell instance receives Ctrl-C.
+ *
+ * @param sh Pointer to the shell instance that received Ctrl-C.
+ * @param user_data Opaque user data supplied at registration time.
+ */
+typedef void (*shell_ctrl_c_handler_t)(const struct shell *sh, void *user_data);
+
+/**
+ * @brief Register a Ctrl-C callback for shell instances.
+ *
+ * Registered callbacks are invoked when a shell receives Ctrl-C, after the
+ * legacy @ref shell_ctrl_c hook runs.
+ *
+ * @param handler Callback to invoke.
+ * @param user_data Opaque user data passed to @p handler.
+ *
+ * @retval 0 Success.
+ * @retval -EINVAL Invalid arguments.
+ * @retval -EALREADY Callback already registered.
+ * @retval -ENOMEM No free callback slots remain.
+ */
+int shell_ctrl_c_register(shell_ctrl_c_handler_t handler, void *user_data);
+
+/**
+ * @brief Unregister a previously registered Ctrl-C callback.
+ *
+ * @param handler Callback to remove.
+ * @param user_data User data associated with @p handler.
+ *
+ * @retval 0 Success.
+ * @retval -EINVAL Invalid arguments.
+ * @retval -ENOENT Callback was not registered.
+ */
+int shell_ctrl_c_unregister(shell_ctrl_c_handler_t handler, void *user_data);
+
+/**
+ * @brief Optional hook called when the shell receives Ctrl-C.
+ *
+ * Applications or modules may override this symbol to cancel auxiliary work
+ * associated with the active shell instance. The default implementation is a
+ * no-op.
+ *
+ * @param sh Pointer to the shell instance that received Ctrl-C.
+ */
+void shell_ctrl_c(const struct shell *sh);
+
+/**
  * @brief Terminal default text color for shell_fprintf function.
  */
 #define SHELL_NORMAL	SHELL_VT100_COLOR_DEFAULT
