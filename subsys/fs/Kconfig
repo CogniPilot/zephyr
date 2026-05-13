@@ -128,6 +128,33 @@ config FUSE_LIBRARY_V3
 
 endchoice
 
+config FILE_SYSTEM_RPMSGFS
+	bool "RPMsgFS file system support"
+	depends on OPENAMP
+	help
+	  RPMsgFS allows mounting directories on a remote core using RPMsg.
+
+if FILE_SYSTEM_RPMSGFS
+
+config FILE_SYSTEM_RPMSGFS_SINGLE_CHANNEL
+	bool "Use one RPMsg channel for every RPMsgFS mount"
+	default y
+	help
+	  Uses a single shared RPMsg channel for all RPMsgFS mounts.
+
+	  The channel is created during the first mount and remains active for
+	  subsequent mounts.
+
+
+config FILE_SYSTEM_RPMSGFS_MAX_MOUNTS
+	int "RPMsgFS max mounts"
+	default 1
+	help
+	  Specifies the maximum number of RPMsgFS file system instances that can
+	  be mounted simultaneously.
+
+endif # FILE_SYSTEM_RPMSGFS
+
 endif # FILE_SYSTEM
 
 if FILE_SYSTEM_LIB_LINK
@@ -139,11 +166,6 @@ config APP_LINK_WITH_FS
 	  Add FS header files to the 'app' include path. It may be
 	  disabled if the include paths for FS are causing aliasing
 	  issues for 'app'.
-
-config FILE_SYSTEM_RPMSGFS
-	bool "RPMSGFS file system support"
-	help
-	  Use RPMSGFS file system to mount remote directories.
 
 # Logging defined here as modules/fs/littlefs/lfs.c expects CONFIG_FS_LOG_LEVEL
 module = FS

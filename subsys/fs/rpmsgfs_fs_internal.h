@@ -1,3 +1,9 @@
+/*
+ * Copyright 2026 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <zephyr/kernel.h>
 
 #define RPMSGFS_INIT      0
@@ -59,25 +65,25 @@
 #define RPMSGFS_S_IFSOCK (12 << 12)
 #define RPMSGFS_S_IFMT   (15 << 12)
 
-#define RPMSGFS_DEFAULT_MODE 0644
+#define RPMSGFS_DEFAULT_FILE_MODE 0644
+#define RPMSGFS_DEFAULT_DIR_MODE  0755
 
 /*
  * RPMSGFS d_type file flags
  */
 
-#define RPMSGFS_DT_UNKNOWN  0
-#define RPMSGFS_DT_FIFO     1
-#define RPMSGFS_DT_CHR      2
-#define RPMSGFS_DT_SEM      3
-#define RPMSGFS_DT_DIR      4
-#define RPMSGFS_DT_MQ       5
-#define RPMSGFS_DT_BLK      6
-#define RPMSGFS_DT_SHM      7
-#define RPMSGFS_DT_REG      8
-#define RPMSGFS_DT_MTD      9
-#define RPMSGFS_DT_LNK      10
-#define RPMSGFS_DT_SOCK     12
-
+#define RPMSGFS_DT_UNKNOWN 0
+#define RPMSGFS_DT_FIFO    1
+#define RPMSGFS_DT_CHR     2
+#define RPMSGFS_DT_SEM     3
+#define RPMSGFS_DT_DIR     4
+#define RPMSGFS_DT_MQ      5
+#define RPMSGFS_DT_BLK     6
+#define RPMSGFS_DT_SHM     7
+#define RPMSGFS_DT_REG     8
+#define RPMSGFS_DT_MTD     9
+#define RPMSGFS_DT_LNK     10
+#define RPMSGFS_DT_SOCK    12
 
 struct iovec {
 	void *iov_base; /* Base address of I/O memory region */
@@ -94,58 +100,58 @@ struct rpmsgfs_header_s {
 	uint32_t command;
 	int32_t result;
 	uint64_t cookie;
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_open_s {
 	struct rpmsgfs_header_s header;
 	int32_t flags;
 	int32_t mode;
 	char pathname[0];
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_file_descriptor_s {
 	struct rpmsgfs_header_s header;
 	int32_t fd;
-} __attribute__((packed));
+} __packed;
 
-struct rpmsgfs_read_write_s {
+struct rpmsgfs_file_content_s {
 	struct rpmsgfs_header_s header;
 	int32_t fd;
 	uint32_t count;
 	char buf[0];
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_lseek_s {
 	struct rpmsgfs_header_s header;
 	int32_t fd;
 	int32_t whence;
 	int32_t offset;
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_ftruncate_s {
 	struct rpmsgfs_header_s header;
 	int32_t fd;
 	int32_t length;
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_mkdir_s {
 	struct rpmsgfs_header_s header;
 	int32_t mode;
 	uint32_t reserved;
 	char pathname[0];
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_pathname_s {
 	struct rpmsgfs_header_s header;
 	char pathname[0];
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_readdir_s {
 	struct rpmsgfs_header_s header;
 	int32_t fd;
 	uint32_t type;
 	char name[0];
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_stat_priv_s {
 	uint32_t dev;      /* Device ID of device containing file */
@@ -165,7 +171,7 @@ struct rpmsgfs_stat_priv_s {
 	int16_t gid;       /* Group ID of file */
 	int16_t blksize;   /* Block size used for filesystem I/O */
 	uint16_t reserved; /* Reserved space */
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_fstat_s {
 	struct rpmsgfs_header_s header;
@@ -174,7 +180,7 @@ struct rpmsgfs_fstat_s {
 		int32_t fd;
 		char pathname[0];
 	};
-} __attribute__((packed));
+} __packed;
 
 struct rpmsgfs_statfs_s {
 	struct rpmsgfs_header_s header;
@@ -188,4 +194,4 @@ struct rpmsgfs_statfs_s {
 	uint64_t files;    /* Total file nodes in the file system */
 	uint64_t ffree;    /* Free file nodes in the file system */
 	char pathname[0];
-} __attribute__((packed));
+} __packed;
