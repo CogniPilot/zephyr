@@ -193,14 +193,17 @@ static int ptp_clock_nxp_enet_qos_init(const struct device *dev)
 	 * not on an accumulator overflow, so it completes immediately.
 	 * nanosecond rollover in digital logic
 	 */
-	data->base->MAC_TIMESTAMP_CONTROL =
-		ENET_MAC_TIMESTAMP_CONTROL_TSENA_MASK | ENET_MAC_TIMESTAMP_CONTROL_TSIPV4ENA_MASK |
-		ENET_MAC_TIMESTAMP_CONTROL_TSIPV6ENA_MASK |
-		ENET_MAC_TIMESTAMP_CONTROL_TSENALL_MASK |
-		ENET_MAC_TIMESTAMP_CONTROL_TSEVNTENA_MASK |
-		ENET_MAC_TIMESTAMP_CONTROL_SNAPTYPSEL_MASK |
-		ENET_MAC_TIMESTAMP_CONTROL_TSCTRLSSR(1) |
-		ENET_MAC_TIMESTAMP_CONTROL_TSVER2ENA_MASK | ENET_MAC_TIMESTAMP_CONTROL_TSIPENA_MASK;
+	/*
+	 * Timestamp all received frames (TSENALL). Combining TSENALL with
+	 * the PTP-parser snapshot selection bits (TSVER2ENA/TSIPENA/
+	 * TSEVNTENA/SNAPTYPSEL) suppresses RX snapshots entirely on this
+	 * ENET QoS instantiation: frames arrive with RS1V/TSA clear and no
+	 * timestamp context descriptor is written. TSENALL alone timestamps
+	 * every frame, which is what gPTP needs.
+	 */
+	data->base->MAC_TIMESTAMP_CONTROL = ENET_MAC_TIMESTAMP_CONTROL_TSENA_MASK |
+					    ENET_MAC_TIMESTAMP_CONTROL_TSENALL_MASK |
+					    ENET_MAC_TIMESTAMP_CONTROL_TSCTRLSSR(1);
 
 	/* Step 2: initialize system time to zero (coarse mode — completes quickly) */
 	data->base->MAC_SYSTEM_TIME_NANOSECONDS_UPDATE = 0;
