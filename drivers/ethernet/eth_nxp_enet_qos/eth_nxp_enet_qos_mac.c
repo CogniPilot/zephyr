@@ -415,6 +415,26 @@ static void eth_nxp_enet_qos_rx(struct k_work *work)
 				volatile union nxp_enet_qos_rx_desc *ctx_desc = &desc_arr[ctx_idx];
 
 				if ((desc->write.control3 & RX_STATUS1_VALID_FLAG) &&
+				    (desc->write.control1 & RX_TIMESTAMP_AVAILABLE_FLAG)) {
+					/* The DMA raises the receive interrupt on the last
+					 * regular descriptor writeback and only then writes
+					 * the context descriptor, so it may still own that
+					 * slot when we get here. TSA guarantees a context
+					 * descriptor follows; wait briefly instead of losing
+					 * the timestamp to this race.
+					 */
+					uint32_t spin = 1000U;
+
+					while ((ctx_desc->write.control3 & OWN_FLAG) &&
+					       (--spin > 0U)) {
+					}
+					if (spin == 0U) {
+						LOG_WRN("RX timestamp context descriptor "
+							"missing (TSA set)");
+					}
+				}
+
+				if ((desc->write.control3 & RX_STATUS1_VALID_FLAG) &&
 				    (desc->write.control1 & RX_TIMESTAMP_AVAILABLE_FLAG) &&
 				    !(ctx_desc->write.control3 & OWN_FLAG) &&
 				    (ctx_desc->write.control3 & RECEIVE_CONTEXT_DESCRIPTOR_FLAG)) {
