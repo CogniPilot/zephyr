@@ -209,6 +209,23 @@ int input_crsf_send_telemetry(const struct device *dev, uint8_t type, uint8_t *p
  */
 struct crsf_link_stats input_crsf_get_link_stats(const struct device *dev);
 
+/** Runtime counters useful when diagnosing a CRSF receiver or UART link. */
+struct crsf_diagnostics {
+	uint32_t uart_rx_bytes;
+	uint32_t valid_frames;
+	uint32_t channel_frames;
+	uint32_t link_frames;
+	uint32_t crc_errors;
+	uint32_t unsupported_frames;
+	uint32_t queue_drops;
+	uint32_t uart_rx_stopped;
+	uint32_t uart_rx_restarts;
+	uint32_t uart_errors;
+};
+
+/** Retrieve a snapshot of the CRSF driver's diagnostic counters. */
+struct crsf_diagnostics input_crsf_get_diagnostics(const struct device *dev);
+
 #ifdef __cplusplus
 }
 #endif

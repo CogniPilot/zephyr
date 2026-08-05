@@ -88,6 +88,16 @@ struct input_crsf_data {
 
 	struct crsf_link_stats link_stats;
 	struct k_spinlock lock;
+	atomic_t uart_rx_bytes;
+	atomic_t valid_frames;
+	atomic_t channel_frames;
+	atomic_t link_frames;
+	atomic_t crc_errors;
+	atomic_t unsupported_frames;
+	atomic_t queue_drops;
+	atomic_t uart_rx_stopped;
+	atomic_t uart_rx_restarts;
+	atomic_t uart_errors;
 
 	/* RX State */
 	enum crsf_rx_state rx_state;
@@ -98,6 +108,7 @@ struct input_crsf_data {
 	/* Async RX DMA Buffers (Double buffering) */
 	uint8_t *rx_buf_a;
 	uint8_t *rx_buf_b;
+	uint8_t *rx_buf_current;
 
 	uint8_t crsf_frame[CRSF_MAX_FRAME_LEN];
 
@@ -184,6 +195,24 @@ struct crsf_link_stats input_crsf_get_link_stats(const struct device *dev)
 	k_spin_unlock(&data->lock, key);
 
 	return stats_copy;
+}
+
+struct crsf_diagnostics input_crsf_get_diagnostics(const struct device *dev)
+{
+	struct input_crsf_data *data = dev->data;
+
+	return (struct crsf_diagnostics) {
+		.uart_rx_bytes = atomic_get(&data->uart_rx_bytes),
+		.valid_frames = atomic_get(&data->valid_frames),
+		.channel_frames = atomic_get(&data->channel_frames),
+		.link_frames = atomic_get(&data->link_frames),
+		.crc_errors = atomic_get(&data->crc_errors),
+		.unsupported_frames = atomic_get(&data->unsupported_frames),
+		.queue_drops = atomic_get(&data->queue_drops),
+		.uart_rx_stopped = atomic_get(&data->uart_rx_stopped),
+		.uart_rx_restarts = atomic_get(&data->uart_rx_restarts),
+		.uart_errors = atomic_get(&data->uart_errors),
+	};
 }
 
 static inline unsigned int uabs_diff(unsigned int a, unsigned int b)
@@ -293,18 +322,22 @@ static void input_crsf_input_report_thread(const struct device *dev, void *dummy
 		payload_len = frame[1];
 		calc_crc = crc8(&frame[2], payload_len - 1, 0xD5, 0x00, false);
 		if (calc_crc != frame[2 + payload_len - 1]) {
+			atomic_inc(&data->crc_errors);
 			LOG_WRN("CRSF CRC mismatch");
 			continue;
 		}
+		atomic_inc(&data->valid_frames);
 
 		/* Dispatch based on Type */
 		type = frame[2];
 		data_len = crsf_payload_data_len(payload_len);
 
 		if (type == CRSF_TYPE_RC_CHANNELS && data_len == CRSF_RC_CHANNELS_BYTE_SIZE) {
+			atomic_inc(&data->channel_frames);
 			input_crsf_parse_rc_channels(dev, &frame[3]);
 		} else if (type == CRSF_TYPE_LINK_STATS &&
 			   data_len == sizeof(struct crsf_link_stats)) {
+			atomic_inc(&data->link_frames);
 
 			k_spinlock_key_t key;
 
@@ -363,6 +396,7 @@ static void crsf_process_bytes(const struct device *dev, uint8_t *bytes, size_t 
 				data->rd_data[data->xfer_bytes++] = bytes[offset];
 				data->payload_remaining--;
 			} else {
+				atomic_inc(&data->unsupported_frames);
 				LOG_DBG("Ignoring Type 0x%02X", bytes[offset]);
 				data->rx_state = RX_STATE_IGNORE;
 				data->payload_remaining--;
@@ -389,7 +423,9 @@ static void crsf_process_bytes(const struct device *dev, uint8_t *bytes, size_t 
 				/* Push to Queue. k_msgq_put copies the data safely.
 				 * We push K_NO_WAIT because we are in an ISR.
 				 */
-				k_msgq_put(&data->rx_queue, data->rd_data, K_NO_WAIT);
+				if (k_msgq_put(&data->rx_queue, data->rd_data, K_NO_WAIT) != 0) {
+					atomic_inc(&data->queue_drops);
+				}
 
 				/* Reset for next frame */
 				data->rx_state = RX_STATE_SYNC;
@@ -422,6 +458,7 @@ static void crsf_uart_callback(const struct device *uart_dev, struct uart_event 
 		break;
 
 	case UART_RX_RDY:
+		atomic_add(&data->uart_rx_bytes, evt->data.rx.len);
 #ifdef CRSF_INVALIDATE_CACHE
 		arch_dcache_invd_range(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
 #endif
@@ -432,10 +469,14 @@ static void crsf_uart_callback(const struct device *uart_dev, struct uart_event 
 	case UART_RX_BUF_REQUEST:
 		/* Provide the next buffer to keep reception continuous */
 		{
-			uint8_t *next_buf = (evt->data.rx_buf.buf == data->rx_buf_a)
+			uint8_t *next_buf = (data->rx_buf_current == data->rx_buf_a)
 						    ? data->rx_buf_b
 						    : data->rx_buf_a;
-			uart_rx_buf_rsp(uart_dev, next_buf, CRSF_RX_BUF_SIZE);
+			if (uart_rx_buf_rsp(uart_dev, next_buf, CRSF_RX_BUF_SIZE) != 0) {
+				atomic_inc(&data->uart_errors);
+			} else {
+				data->rx_buf_current = next_buf;
+			}
 		}
 		break;
 
@@ -445,7 +486,17 @@ static void crsf_uart_callback(const struct device *uart_dev, struct uart_event 
 
 	case UART_RX_DISABLED:
 		/* Restart RX if disabled (error recovery) */
-		uart_rx_enable(uart_dev, data->rx_buf_a, CRSF_RX_BUF_SIZE, CRSF_RX_TIMEOUT_US);
+		data->rx_buf_current = data->rx_buf_a;
+		if (uart_rx_enable(uart_dev, data->rx_buf_a, CRSF_RX_BUF_SIZE,
+				   CRSF_RX_TIMEOUT_US) == 0) {
+			atomic_inc(&data->uart_rx_restarts);
+		} else {
+			atomic_inc(&data->uart_errors);
+		}
+		break;
+
+	case UART_RX_STOPPED:
+		atomic_inc(&data->uart_rx_stopped);
 		break;
 
 	default:
@@ -470,6 +521,7 @@ static int input_crsf_init(const struct device *dev)
 
 	data->xfer_bytes = 0;
 	data->rx_state = RX_STATE_SYNC;
+	data->rx_buf_current = data->rx_buf_a;
 
 	for (i = 0; i < config->num_channels; i++) {
 		data->channel_mapping[config->channel_info[i].crsf_channel - 1] = i;
