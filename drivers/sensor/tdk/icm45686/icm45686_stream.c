@@ -185,7 +185,7 @@ static void icm45686_event_handler(const struct device *dev)
 {
 	struct icm45686_data *data = dev->data;
 	const struct icm45686_config *cfg = dev->config;
-	const struct sensor_read_config *read_cfg = data->stream.iodev_sqe->sqe.iodev->data;
+	const struct sensor_read_config *read_cfg;
 	uint8_t val = 0;
 	uint64_t cycles;
 	int err;
@@ -209,6 +209,13 @@ static void icm45686_event_handler(const struct device *dev)
 		data->stream.settings.enabled.fifo_full = false;
 		return;
 	}
+
+	/* Only valid once the submission above is known to be present: a
+	 * data-ready interrupt can arrive after the stream was torn down, and
+	 * dereferencing a NULL iodev_sqe here faults instead of taking the
+	 * disable path this check exists for.
+	 */
+	read_cfg = data->stream.iodev_sqe->sqe.iodev->data;
 
 	if (atomic_cas(&data->stream.state, ICM45686_STREAM_ON, ICM45686_STREAM_BUSY) == false) {
 		LOG_WRN("Event handler triggered while a stream is in progress! Ignoring");
