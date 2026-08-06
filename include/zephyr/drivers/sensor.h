@@ -1522,6 +1522,41 @@ static inline void sensor_three_axis_ref_align(const struct sensor_three_axis_re
 	}
 }
 
+/**
+ * @brief Align three-axis sensor values using the axis reference.
+ *
+ * This function is intended for use with the legacy fetch-get API.
+ *
+ * @param ref Pointer to the three-axis reference configuration.
+ * @param val Array of 3 sensor_value structs [x, y, z] to be aligned in-place.
+ */
+static inline void sensor_three_axis_ref_align_channel(const struct sensor_three_axis_ref *ref,
+						       struct sensor_value val[3])
+{
+	struct sensor_value tmp[3] = {val[0], val[1], val[2]};
+
+	if (ref->axis[0].inverted) {
+		val[ref->axis[0].index].val1 = -tmp[0].val1;
+		val[ref->axis[0].index].val2 = -tmp[0].val2;
+	} else {
+		val[ref->axis[0].index] = tmp[0];
+	}
+
+	if (ref->axis[1].inverted) {
+		val[ref->axis[1].index].val1 = -tmp[1].val1;
+		val[ref->axis[1].index].val2 = -tmp[1].val2;
+	} else {
+		val[ref->axis[1].index] = tmp[1];
+	}
+
+	if (ref->axis[2].inverted) {
+		val[ref->axis[2].index].val1 = -tmp[2].val1;
+		val[ref->axis[2].index].val2 = -tmp[2].val2;
+	} else {
+		val[ref->axis[2].index] = tmp[2];
+	}
+}
+
 #else
 
 #define SENSOR_THREE_AXIS_REF_DT_NAME(name, ...)
