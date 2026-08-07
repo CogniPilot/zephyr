@@ -379,6 +379,172 @@ static enum net_verdict net_gptp_recv(struct net_if *iface, uint16_t ptype,
 
 ETH_NET_L3_REGISTER(gPTP, NET_ETH_PTYPE_PTP, net_gptp_recv);
 
+/* Announce message flags describing the time properties of the clock. */
+#define GPTP_TIME_PROP_FLAGS (GPTP_FLAG_LEAP61 |		\
+			      GPTP_FLAG_LEAP59 |		\
+			      GPTP_FLAG_CUR_UTC_OFF_VALID |	\
+			      GPTP_FLAG_TIME_TRACEABLE |	\
+			      GPTP_FLAG_FREQ_TRACEABLE)
+
+/*
+ * Clock attributes given by the application. They are retained so that they
+ * can be applied again by gptp_init_clock_ds(), which runs when the gPTP
+ * thread starts and would otherwise replace them by the values coming from
+ * the configuration.
+ */
+static struct {
+	/** Quality of the local clock. */
+	struct gptp_gm_quality quality;
+
+	/** Offset between TAI and UTC, in seconds. */
+	int16_t cur_utc_offset;
+
+	/** Byte 1 of the announce flags built from the time properties. */
+	uint8_t time_prop_flags;
+
+	/** The quality has been given by the application. */
+	bool quality_set;
+
+	/** The time properties have been given by the application. */
+	bool time_prop_set;
+} clk_attributes;
+
+static void gptp_apply_gm_quality(void)
+{
+	struct gptp_default_ds *default_ds = GPTP_DEFAULT_DS();
+	struct gptp_global_ds *global_ds = GPTP_GLOBAL_DS();
+	struct gptp_parent_ds *parent_ds = GPTP_PARENT_DS();
+
+	default_ds->clk_quality.clock_class =
+		clk_attributes.quality.clock_class;
+	default_ds->clk_quality.clock_accuracy =
+		clk_attributes.quality.clock_accuracy;
+	default_ds->time_source = clk_attributes.quality.time_source;
+
+	/* The announced time source is taken from the system value when this
+	 * time-aware system is the grandmaster.
+	 */
+	global_ds->sys_time_source = default_ds->time_source;
+
+	/* The parent data set describes the grandmaster. Keep it aligned with
+	 * the local clock while this system is its own grandmaster, or while
+	 * no grandmaster has been elected yet.
+	 */
+	if (!global_ds->gm_present ||
+	    (memcmp(global_ds->gm_priority.root_system_id.grand_master_id,
+		    default_ds->clk_id, GPTP_CLOCK_ID_LEN) == 0)) {
+		parent_ds->gm_clk_quality.clock_class =
+			default_ds->clk_quality.clock_class;
+		parent_ds->gm_clk_quality.clock_accuracy =
+			default_ds->clk_quality.clock_accuracy;
+	}
+}
+
+static void gptp_apply_time_properties(void)
+{
+	struct gptp_default_ds *default_ds = GPTP_DEFAULT_DS();
+	struct gptp_global_ds *global_ds = GPTP_GLOBAL_DS();
+	struct gptp_time_prop_ds *prop_ds = GPTP_PROPERTIES_DS();
+	uint8_t flags = clk_attributes.time_prop_flags;
+
+	prop_ds->cur_utc_offset = (uint16_t)clk_attributes.cur_utc_offset;
+	prop_ds->cur_utc_offset_valid =
+		(flags & GPTP_FLAG_CUR_UTC_OFF_VALID) != 0U;
+	prop_ds->leap61 = (flags & GPTP_FLAG_LEAP61) != 0U;
+	prop_ds->leap59 = (flags & GPTP_FLAG_LEAP59) != 0U;
+	prop_ds->time_traceable = (flags & GPTP_FLAG_TIME_TRACEABLE) != 0U;
+	prop_ds->freq_traceable = (flags & GPTP_FLAG_FREQ_TRACEABLE) != 0U;
+
+	/* Only the flags describing the time properties are replaced, the
+	 * other bits of the field are left untouched.
+	 */
+	default_ds->flags.octets[1] =
+		(default_ds->flags.octets[1] & ~GPTP_TIME_PROP_FLAGS) | flags;
+	default_ds->cur_utc_offset = (uint16_t)clk_attributes.cur_utc_offset;
+
+	global_ds->sys_flags.octets[1] =
+		(global_ds->sys_flags.octets[1] & ~GPTP_TIME_PROP_FLAGS) |
+		flags;
+	global_ds->sys_current_utc_offset = clk_attributes.cur_utc_offset;
+}
+
+/*
+ * Request the port role selection state machine to run the Best Master Clock
+ * selection Algorithm again. It is what copies the local clock attributes
+ * into the fields carried by the Announce messages, and it only runs when at
+ * least one port asks for a reselection.
+ */
+static void gptp_reselect_all_ports(void)
+{
+	struct gptp_global_ds *global_ds = GPTP_GLOBAL_DS();
+	int port;
+
+	for (port = GPTP_PORT_START; port <= GPTP_PORT_END; port++) {
+		CLEAR_SELECTED(global_ds, port);
+		SET_RESELECT(global_ds, port);
+	}
+}
+
+void gptp_update_gm_quality(const struct gptp_gm_quality *quality)
+{
+	unsigned int key;
+
+	if (quality == NULL) {
+		return;
+	}
+
+	key = irq_lock();
+
+	clk_attributes.quality = *quality;
+	clk_attributes.quality_set = true;
+
+	gptp_apply_gm_quality();
+	gptp_reselect_all_ports();
+
+	irq_unlock(key);
+}
+
+void gptp_update_time_properties(const struct gptp_time_properties *prop)
+{
+	unsigned int key;
+	uint8_t flags = 0U;
+
+	if (prop == NULL) {
+		return;
+	}
+
+	if (prop->cur_utc_offset_valid) {
+		flags |= GPTP_FLAG_CUR_UTC_OFF_VALID;
+	}
+
+	if (prop->leap61) {
+		flags |= GPTP_FLAG_LEAP61;
+	}
+
+	if (prop->leap59) {
+		flags |= GPTP_FLAG_LEAP59;
+	}
+
+	if (prop->time_traceable) {
+		flags |= GPTP_FLAG_TIME_TRACEABLE;
+	}
+
+	if (prop->freq_traceable) {
+		flags |= GPTP_FLAG_FREQ_TRACEABLE;
+	}
+
+	key = irq_lock();
+
+	clk_attributes.cur_utc_offset = prop->cur_utc_offset;
+	clk_attributes.time_prop_flags = flags;
+	clk_attributes.time_prop_set = true;
+
+	gptp_apply_time_properties();
+	gptp_reselect_all_ports();
+
+	irq_unlock(key);
+}
+
 static void gptp_init_clock_ds(void)
 {
 	struct gptp_global_ds *global_ds;
@@ -402,7 +568,7 @@ static void gptp_init_clock_ds(void)
 	gptp_compute_clock_identity(GPTP_PORT_START);
 
 	default_ds->gm_capable = IS_ENABLED(CONFIG_NET_GPTP_GM_CAPABLE);
-	default_ds->clk_quality.clock_class = GPTP_CLASS_OTHER;
+	default_ds->clk_quality.clock_class = CONFIG_NET_GPTP_CLOCK_CLASS;
 	default_ds->clk_quality.clock_accuracy =
 		CONFIG_NET_GPTP_CLOCK_ACCURACY;
 	default_ds->clk_quality.offset_scaled_log_var =
@@ -427,7 +593,7 @@ static void gptp_init_clock_ds(void)
 	default_ds->cur_utc_offset = 37U; /* Current leap seconds TAI - UTC */
 	default_ds->flags.all = 0U;
 	default_ds->flags.octets[1] = GPTP_FLAG_TIME_TRACEABLE;
-	default_ds->time_source = GPTP_TS_INTERNAL_OSCILLATOR;
+	default_ds->time_source = CONFIG_NET_GPTP_TIME_SOURCE;
 
 	/* Initialize current data set. */
 	(void)memset(current_ds, 0, sizeof(struct gptp_current_ds));
@@ -461,7 +627,7 @@ static void gptp_init_clock_ds(void)
 	prop_ds->leap61 = false;
 	prop_ds->time_traceable = false;
 	prop_ds->freq_traceable = false;
-	prop_ds->time_source = GPTP_TS_INTERNAL_OSCILLATOR;
+	prop_ds->time_source = CONFIG_NET_GPTP_TIME_SOURCE;
 
 	/* Set system values. */
 	global_ds->sys_flags.all = default_ds->flags.all;
@@ -469,6 +635,17 @@ static void gptp_init_clock_ds(void)
 	global_ds->sys_time_source = default_ds->time_source;
 	global_ds->clk_master_sync_itv =
 		NSEC_PER_SEC * GPTP_POW2(CONFIG_NET_GPTP_INIT_LOG_SYNC_ITV);
+
+	/* Restore the attributes given by the application before the data
+	 * sets were initialized.
+	 */
+	if (clk_attributes.quality_set) {
+		gptp_apply_gm_quality();
+	}
+
+	if (clk_attributes.time_prop_set) {
+		gptp_apply_time_properties();
+	}
 }
 
 static void gptp_init_port_ds(int port)

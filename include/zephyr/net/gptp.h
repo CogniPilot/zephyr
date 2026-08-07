@@ -364,6 +364,78 @@ struct gptp_domain *gptp_get_domain(void);
 void gptp_clk_src_time_invoke(struct gptp_clk_src_time_invoke_params *arg);
 
 /**
+ * @brief Quality of the local clock as announced to the network.
+ *
+ * Describes how the local clock is disciplined. These values are carried
+ * by the Announce messages sent by this time-aware system and are used by
+ * the Best Master Clock selection Algorithm to elect the grandmaster.
+ */
+struct gptp_gm_quality {
+	/** Class of the local clock, see IEEE 802.1AS chapter 8.6.2.2. */
+	uint8_t clock_class;
+
+	/** Accuracy of the local clock, see IEEE 802.1AS chapter 8.6.2.3. */
+	uint8_t clock_accuracy;
+
+	/** Source of time of the local clock, see IEEE 802.1AS chapter 8.6.2.7. */
+	uint8_t time_source;
+};
+
+/**
+ * @brief Time properties of the local clock as announced to the network.
+ *
+ * Carried by the Announce messages sent while this time-aware system is
+ * the grandmaster, see IEEE 802.1AS chapter 10.3.8. An application
+ * getting these values from an external time source uses them to keep
+ * the announced properties truthful.
+ */
+struct gptp_time_properties {
+	/** Offset between TAI and UTC, in seconds. */
+	int16_t cur_utc_offset;
+
+	/** The UTC offset is known to be correct. */
+	bool cur_utc_offset_valid;
+
+	/** The last minute of the current UTC day has 61 seconds. */
+	bool leap61;
+
+	/** The last minute of the current UTC day has 59 seconds. */
+	bool leap59;
+
+	/** The time is traceable to a primary reference. */
+	bool time_traceable;
+
+	/** The frequency is traceable to a primary reference. */
+	bool freq_traceable;
+};
+
+/**
+ * @brief Update the announced quality of the local clock.
+ * @details This is used by an application disciplining the local clock from
+ *          an external time source, so that the announced quality follows
+ *          the state of that source. A typical use is to claim a primary
+ *          reference clock class while the source is locked, and to fall
+ *          back to a holdover class once it is lost.
+ *
+ *          The Best Master Clock selection Algorithm is run again with the
+ *          new values, which are then carried by the next Announce message
+ *          sent by this time-aware system.
+ *
+ * @param quality New quality of the local clock.
+ */
+void gptp_update_gm_quality(const struct gptp_gm_quality *quality);
+
+/**
+ * @brief Update the announced time properties of the local clock.
+ * @details This is used by an application getting the UTC offset and the
+ *          leap second indication from an external time source. The values
+ *          are announced while this time-aware system is the grandmaster.
+ *
+ * @param prop New time properties of the local clock.
+ */
+void gptp_update_time_properties(const struct gptp_time_properties *prop);
+
+/**
  * @brief Return pointer to gPTP packet header in network packet.
  *
  * @param pkt Network packet (received or sent)
