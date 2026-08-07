@@ -52,4 +52,12 @@ config GNSS_U_BLOX_F9P_RTK
 
 endif # GNSS_RTK
 
+config GNSS_U_BLOX_F9P_TIMEPULSE
+	bool "Time pulse (TIM-TP) and leap second (NAV-TIMELS) reporting"
+	help
+	  Enable periodic UBX-TIM-TP messages (time of the next time pulse
+	  with picosecond quantization error) and UBX-NAV-TIMELS leap second
+	  information from the modem, for GNSS-disciplined clock
+	  applications pairing the TIMEPULSE pin with its time-of-day.
+
 endif # GNSS_U_BLOX_F9P

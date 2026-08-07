@@ -62,7 +62,13 @@ enum ubx_class_id {
 
 enum ubx_msg_id_nav {
 	UBX_MSG_ID_NAV_PVT = 0x07,
+	UBX_MSG_ID_NAV_TIMELS = 0x26,
 	UBX_MSG_ID_NAV_SAT = 0x35,
+};
+
+enum ubx_msg_id_tim {
+	UBX_MSG_ID_TIM_TP = 0x01,
+	UBX_MSG_ID_TIM_TM2 = 0x03,
 };
 
 enum ubx_nav_fix_type {
@@ -167,6 +173,63 @@ struct ubx_nav_sat {
 		uint32_t flags;
 	} sat[];
 };
+
+#define UBX_TIM_TP_FLAGS_TIME_BASE_UTC			BIT(0)
+#define UBX_TIM_TP_FLAGS_UTC_AVAILABLE			BIT(1)
+#define UBX_TIM_TP_FLAGS_QERR_INVALID			BIT(4)
+
+#define UBX_TIM_TP_REF_INFO_TIME_REF_GNSS(ref_info)	((ref_info) & 0x0F)
+#define UBX_TIM_TP_REF_INFO_UTC_STANDARD(ref_info)	(((ref_info) >> 4) & 0x0F)
+
+struct ubx_tim_tp {
+	uint32_t tow_ms; /* Time pulse time of week of next pulse. ms */
+	uint32_t tow_sub_ms; /* Submillisecond part of tow_ms. scaling: 2^-32 ms */
+	int32_t q_err; /* Quantization error of time pulse. ps */
+	uint16_t week; /* Time pulse week number */
+	uint8_t flags; /* See UBX_TIM_TP_FLAGS_* */
+	uint8_t ref_info; /* Time reference. See UBX_TIM_TP_REF_INFO_* */
+} __packed;
+
+#define UBX_TIM_TM2_FLAGS_MODE_RUNNING			BIT(0)
+#define UBX_TIM_TM2_FLAGS_RUN_STOPPED			BIT(1)
+#define UBX_TIM_TM2_FLAGS_NEW_FALLING_EDGE		BIT(2)
+#define UBX_TIM_TM2_FLAGS_UTC_AVAILABLE			BIT(5)
+#define UBX_TIM_TM2_FLAGS_TIME_VALID			BIT(6)
+#define UBX_TIM_TM2_FLAGS_NEW_RISING_EDGE		BIT(7)
+
+/* Time mark time base: 0 = receiver time, 1 = GNSS time, 2 = UTC */
+#define UBX_TIM_TM2_FLAGS_TIME_BASE(flags)		(((flags) >> 3) & 0x03)
+
+struct ubx_tim_tm2 {
+	uint8_t ch; /* Channel (EXTINT) the time mark was measured on */
+	uint8_t flags; /* See UBX_TIM_TM2_FLAGS_* */
+	uint16_t count; /* Rising edge counter */
+	uint16_t wn_r; /* Week number of last rising edge */
+	uint16_t wn_f; /* Week number of last falling edge */
+	uint32_t tow_ms_r; /* Time of week of last rising edge. ms */
+	uint32_t tow_sub_ms_r; /* Millisecond fraction of tow_ms_r. ns */
+	uint32_t tow_ms_f; /* Time of week of last falling edge. ms */
+	uint32_t tow_sub_ms_f; /* Millisecond fraction of tow_ms_f. ns */
+	uint32_t acc_est; /* Accuracy estimate. ns */
+} __packed;
+
+#define UBX_NAV_TIMELS_VALID_CURR_LS			BIT(0)
+#define UBX_NAV_TIMELS_VALID_TIME_TO_LS_EVENT		BIT(1)
+
+struct ubx_nav_timels {
+	uint32_t itow;
+	uint8_t version;
+	uint8_t reserved1[3];
+	uint8_t src_of_curr_ls;
+	int8_t curr_ls; /* Current number of leap seconds since GPS epoch (GPS-UTC). s */
+	uint8_t src_of_ls_change;
+	int8_t ls_change; /* Future leap second change (+1, 0, -1). s */
+	int32_t time_to_ls_event; /* Time to leap second event. s */
+	uint16_t date_of_ls_gps_wn; /* GPS week number of leap second event */
+	uint16_t date_of_ls_gps_dn; /* GPS day of week of leap second event */
+	uint8_t reserved2[3];
+	uint8_t valid; /* See UBX_NAV_TIMELS_VALID_* */
+} __packed;
 
 enum ubx_msg_id_ack {
 	UBX_MSG_ID_ACK = 0x01,
