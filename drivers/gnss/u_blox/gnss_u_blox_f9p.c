@@ -19,6 +19,7 @@
 
 #include "gnss_u_blox_iface.h"
 #include <zephyr/gnss/rtk/rtk.h>
+#include <zephyr/drivers/gnss/u_blox_f9p.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ubx_f9p, CONFIG_GNSS_LOG_LEVEL);
@@ -48,6 +49,16 @@ UBX_FRAME_DEFINE(set_rtk_fix_mode,
 UBX_FRAME_DEFINE(enable_sat,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_SAT_UART1, 1));
 #endif
+#if CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE
+UBX_FRAME_DEFINE(enable_tim_tp,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_TIM_TP_UART1, 1));
+/** TIM-TM2 is emitted at the measurement rate, but only after an EXTINT edge. */
+UBX_FRAME_DEFINE(enable_tim_tm2,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_TIM_TM2_UART1, 1));
+/** NAV-TIMELS changes rarely: emit every 255th nav epoch to limit traffic. */
+UBX_FRAME_DEFINE(enable_nav_timels,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_TIMELS_UART1, 255));
+#endif
 
 UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
 	&disable_nmea, &enable_nav, &nav_fix_mode_auto,
@@ -59,6 +70,9 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
 #if CONFIG_GNSS_SATELLITES
 	&enable_sat,
 #endif
+#if CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE
+	&enable_tim_tp, &enable_tim_tm2, &enable_nav_timels,
+#endif
 );
 
 MODEM_UBX_MATCH_ARRAY_DEFINE(u_blox_f9p_unsol_messages,
@@ -67,6 +81,14 @@ MODEM_UBX_MATCH_ARRAY_DEFINE(u_blox_f9p_unsol_messages,
 #if CONFIG_GNSS_SATELLITES
 	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_SAT,
 			       gnss_ubx_common_satellite_callback),
+#endif
+#if CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE
+	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_TIM, UBX_MSG_ID_TIM_TP,
+			       gnss_ubx_common_tim_tp_callback),
+	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_TIM, UBX_MSG_ID_TIM_TM2,
+			       gnss_ubx_common_tim_tm2_callback),
+	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_TIMELS,
+			       gnss_ubx_common_timels_callback),
 #endif
 );
 
@@ -82,6 +104,75 @@ static void f9p_rtk_data_cb(const struct device *dev, const struct gnss_rtk_data
 }
 
 #endif /* CONFIG_GNSS_U_BLOX_F9P_RTK */
+
+#if CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE
+
+int u_blox_f9p_timepulse_get(const struct device *dev, struct ubx_tim_tp *tim_tp,
+			     int64_t *uptime_ticks, uint32_t *seq)
+{
+	struct u_blox_iface_data *data = dev->data;
+	struct gnss_ubx_common_data *common = &data->common_data;
+	int err = 0;
+
+	K_SPINLOCK(&common->timepulse.lock) {
+		if (common->timepulse.tim_tp_seq == 0) {
+			err = -EAGAIN;
+			K_SPINLOCK_BREAK;
+		}
+		*tim_tp = common->timepulse.tim_tp;
+		if (uptime_ticks != NULL) {
+			*uptime_ticks = common->timepulse.tim_tp_uptime_ticks;
+		}
+		if (seq != NULL) {
+			*seq = common->timepulse.tim_tp_seq;
+		}
+	}
+
+	return err;
+}
+
+int u_blox_f9p_timemark_get(const struct device *dev, struct ubx_tim_tm2 *tm2,
+			    int64_t *uptime_ticks, uint32_t *seq)
+{
+	struct u_blox_iface_data *data = dev->data;
+	struct gnss_ubx_common_data *common = &data->common_data;
+	int err = 0;
+
+	K_SPINLOCK(&common->timepulse.lock) {
+		if (common->timepulse.tim_tm2_seq == 0) {
+			err = -EAGAIN;
+			K_SPINLOCK_BREAK;
+		}
+		*tm2 = common->timepulse.tim_tm2;
+		if (uptime_ticks != NULL) {
+			*uptime_ticks = common->timepulse.tim_tm2_uptime_ticks;
+		}
+		if (seq != NULL) {
+			*seq = common->timepulse.tim_tm2_seq;
+		}
+	}
+
+	return err;
+}
+
+int u_blox_f9p_leap_get(const struct device *dev, struct ubx_nav_timels *timels)
+{
+	struct u_blox_iface_data *data = dev->data;
+	struct gnss_ubx_common_data *common = &data->common_data;
+	int err = 0;
+
+	K_SPINLOCK(&common->timepulse.lock) {
+		if (!common->timepulse.timels_valid) {
+			err = -EAGAIN;
+			K_SPINLOCK_BREAK;
+		}
+		*timels = common->timepulse.timels;
+	}
+
+	return err;
+}
+
+#endif /* CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE */
 
 static int u_blox_f9p_init(const struct device *dev)
 {

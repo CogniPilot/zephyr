@@ -22,6 +22,19 @@ struct gnss_ubx_common_data {
 		size_t size;
 	} satellites;
 #endif
+#if CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE
+	struct {
+		struct k_spinlock lock;
+		struct ubx_tim_tp tim_tp;
+		int64_t tim_tp_uptime_ticks;
+		uint32_t tim_tp_seq;
+		struct ubx_tim_tm2 tim_tm2;
+		int64_t tim_tm2_uptime_ticks;
+		uint32_t tim_tm2_seq;
+		struct ubx_nav_timels timels;
+		bool timels_valid;
+	} timepulse;
+#endif
 };
 
 struct gnss_ubx_common_config {
@@ -37,6 +50,15 @@ void gnss_ubx_common_pvt_callback(struct modem_ubx *ubx, const struct ubx_frame 
 
 void gnss_ubx_common_satellite_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
 				       size_t len, void *user_data);
+
+void gnss_ubx_common_tim_tp_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
+				    size_t len, void *user_data);
+
+void gnss_ubx_common_tim_tm2_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
+				     size_t len, void *user_data);
+
+void gnss_ubx_common_timels_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
+				    size_t len, void *user_data);
 
 void gnss_ubx_common_init(struct gnss_ubx_common_data *data,
 			 const struct gnss_ubx_common_config *config);

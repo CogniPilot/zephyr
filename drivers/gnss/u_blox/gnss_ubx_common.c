@@ -10,6 +10,9 @@
 
 #include "gnss_ubx_common.h"
 
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(gnss_ubx_common, CONFIG_GNSS_LOG_LEVEL);
+
 void gnss_ubx_common_pvt_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
 				 size_t len, void *user_data)
 {
@@ -146,6 +149,70 @@ void gnss_ubx_common_satellite_callback(struct modem_ubx *ubx, const struct ubx_
 	gnss_publish_satellites(dev, data->satellites.data, num_satellites);
 }
 #endif
+
+#if CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE
+void gnss_ubx_common_tim_tp_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
+				    size_t len, void *user_data)
+{
+	if (len < UBX_FRAME_SZ(sizeof(struct ubx_tim_tp))) {
+		return;
+	}
+
+	struct gnss_ubx_common_data *data = user_data;
+	const struct ubx_tim_tp *tim_tp = (const struct ubx_tim_tp *)frame->payload_and_checksum;
+
+	K_SPINLOCK(&data->timepulse.lock) {
+		data->timepulse.tim_tp = *tim_tp;
+		data->timepulse.tim_tp_uptime_ticks = k_uptime_ticks();
+		data->timepulse.tim_tp_seq++;
+	}
+
+	LOG_DBG("TIM-TP: tow %u ms, qErr %d ps, week %u, flags 0x%02x, ref 0x%02x",
+		tim_tp->tow_ms, tim_tp->q_err, tim_tp->week, tim_tp->flags, tim_tp->ref_info);
+}
+
+void gnss_ubx_common_tim_tm2_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
+				     size_t len, void *user_data)
+{
+	if (len < UBX_FRAME_SZ(sizeof(struct ubx_tim_tm2))) {
+		return;
+	}
+
+	struct gnss_ubx_common_data *data = user_data;
+	const struct ubx_tim_tm2 *tim_tm2 =
+		(const struct ubx_tim_tm2 *)frame->payload_and_checksum;
+
+	K_SPINLOCK(&data->timepulse.lock) {
+		data->timepulse.tim_tm2 = *tim_tm2;
+		data->timepulse.tim_tm2_uptime_ticks = k_uptime_ticks();
+		data->timepulse.tim_tm2_seq++;
+	}
+
+	LOG_DBG("TIM-TM2: count %u, wnR %u, towR %u ms, flags 0x%02x",
+		tim_tm2->count, tim_tm2->wn_r, tim_tm2->tow_ms_r, tim_tm2->flags);
+}
+
+void gnss_ubx_common_timels_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
+				    size_t len, void *user_data)
+{
+	if (len < UBX_FRAME_SZ(sizeof(struct ubx_nav_timels))) {
+		return;
+	}
+
+	struct gnss_ubx_common_data *data = user_data;
+	const struct ubx_nav_timels *timels =
+		(const struct ubx_nav_timels *)frame->payload_and_checksum;
+
+	K_SPINLOCK(&data->timepulse.lock) {
+		data->timepulse.timels = *timels;
+		data->timepulse.timels_valid = true;
+	}
+
+	LOG_DBG("NAV-TIMELS: currLs %d (valid %d), lsChange %d, timeToLsEvent %d s",
+		timels->curr_ls, !!(timels->valid & UBX_NAV_TIMELS_VALID_CURR_LS),
+		timels->ls_change, timels->time_to_ls_event);
+}
+#endif /* CONFIG_GNSS_U_BLOX_F9P_TIMEPULSE */
 
 void gnss_ubx_common_init(struct gnss_ubx_common_data *data,
 			 const struct gnss_ubx_common_config *config)
