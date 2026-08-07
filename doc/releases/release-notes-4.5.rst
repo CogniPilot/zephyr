@@ -284,6 +284,12 @@ New APIs and options
     :c:func:`mdns_responder_disable_iface`
     (:kconfig:option:`CONFIG_MDNS_RESPONDER_RUNTIME_IFACE_CONTROL`) to enable or
     disable the mDNS responder on a network interface at runtime.
+  * Add :c:func:`gptp_update_gm_quality` and
+    :c:func:`gptp_update_time_properties` to update the announced gPTP
+    grandmaster clock quality and time properties at runtime, together with
+    :kconfig:option:`CONFIG_NET_GPTP_CLOCK_CLASS` and
+    :kconfig:option:`CONFIG_NET_GPTP_TIME_SOURCE` to set the boot-time
+    defaults for these attributes.
 
 * Power Management
 

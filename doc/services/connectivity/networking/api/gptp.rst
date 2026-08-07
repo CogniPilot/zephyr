@@ -61,6 +61,21 @@ are available:
 - ``ClockTargetPhaseDiscontinuity`` interface (:c:func:`gptp_register_phase_dis_cb`)
 - ``ClockTargetEventCapture`` interface (:c:func:`gptp_event_capture`)
 
+In addition to these standard interfaces, the clock attributes announced by
+this time-aware system can be updated at runtime:
+
+- :c:func:`gptp_update_gm_quality` sets the announced clockClass,
+  clockAccuracy and timeSource, so an application disciplining the local
+  clock from an external reference (for example GNSS) can announce the
+  state of that reference as it acquires or loses lock. The Best Master
+  Clock selection Algorithm is run again with the new values.
+- :c:func:`gptp_update_time_properties` sets the announced UTC offset,
+  leap second indication and traceability flags.
+
+The boot-time defaults for these attributes are configured with
+:kconfig:option:`CONFIG_NET_GPTP_CLOCK_CLASS` and
+:kconfig:option:`CONFIG_NET_GPTP_TIME_SOURCE`.
+
 Testing
 *******
 
