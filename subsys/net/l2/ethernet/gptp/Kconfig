@@ -200,6 +200,31 @@ config NET_GPTP_PATH_TRACE_ELEMENTS
 	  Announce message. Each array element takes 8 bytes. If this value
 	  is set to 8, then 8 * 8 = 64 bytes of memory is used.
 
+config NET_GPTP_CLOCK_CLASS
+	int "gPTP clockClass value"
+	default 248
+	range 0 $(UINT8_MAX)
+	help
+	  The clockClass attribute of the local clock, denoting its
+	  traceability. It is announced and used in the Best Master Clock
+	  selection Algorithm (BMCA), lower values take precedence. The
+	  default 248 is clockClass "Other". Set 6 for a clock
+	  synchronized to a primary reference time source (e.g. a
+	  GNSS-disciplined grandmaster), 7 for a previously-synchronized
+	  clock in holdover.
+	  See Chapter 8.6.2.2 of IEEE 802.1AS and IEEE 1588 Table 5.
+
+config NET_GPTP_TIME_SOURCE
+	int "gPTP timeSource value"
+	default 160
+	range 0 $(UINT8_MAX)
+	help
+	  The timeSource attribute announced for the local clock. The
+	  default 160 (0xA0) is "internal oscillator". Other notable
+	  values: 16 (0x10) atomic clock, 32 (0x20) GPS/GNSS, 80 (0x50)
+	  NTP.
+	  See Chapter 8.6.2.7 of IEEE 802.1AS.
+
 config NET_GPTP_BMCA_PRIORITY1
 	int "BMCA priority1 value"
 	default 248 if NET_GPTP_GM_CAPABLE
