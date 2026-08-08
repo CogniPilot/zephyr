@@ -688,6 +688,7 @@ static void gptp_init_port_ds(int port)
 		CONFIG_NET_GPTP_INIT_LOG_PDELAY_REQ_ITV;
 	port_ds->cur_log_pdelay_req_itv = port_ds->ini_log_pdelay_req_itv;
 	port_ds->allowed_lost_responses = GPTP_ALLOWED_LOST_RESP;
+	port_ds->allowed_faults = GPTP_ALLOWED_FAULTS;
 	port_ds->version = GPTP_VERSION;
 
 	gptp_set_time_itv(&port_ds->pdelay_req_itv, 1,

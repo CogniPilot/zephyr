@@ -202,6 +202,9 @@ struct gptp_pdelay_req_state {
 	/** Number of lost Path Delay Responses. */
 	uint16_t lost_responses;
 
+	/** Number of consecutive out of range delay measurements. */
+	uint16_t detected_faults;
+
 	/** Current state of the state machine. */
 	enum gptp_pdelay_req_states state;
 
