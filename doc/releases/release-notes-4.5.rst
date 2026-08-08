@@ -290,6 +290,12 @@ New APIs and options
     :kconfig:option:`CONFIG_NET_GPTP_CLOCK_CLASS` and
     :kconfig:option:`CONFIG_NET_GPTP_TIME_SOURCE` to set the boot-time
     defaults for these attributes.
+  * Add :kconfig:option:`CONFIG_NET_GPTP_ALLOWED_FAULTS` to bound the run of
+    consecutive out of range path delay measurements a gPTP port tolerates.
+    Such measurements are now discarded instead of being applied, and
+    asCapable is withdrawn only after more than the configured number of them
+    (default 3) occur in a row, where previously a single one dropped
+    asCapable immediately.
 
 * Power Management
 

@@ -62,6 +62,21 @@ config NET_GPTP_NEIGHBOR_PROP_DELAY_THR
 	  considered capable of participating in the IEEE 802.1AS protocol.
 	  See IEEE 802.1AS chapter 11.2.12.6 for details.
 
+config NET_GPTP_ALLOWED_FAULTS
+	int "Consecutive out of range path delay measurements tolerated"
+	default 3
+	range 0 65535
+	help
+	  Number of consecutive path delay measurements that may fall outside
+	  the neighbor propagation delay threshold before the port is declared
+	  not capable of participating in IEEE 802.1AS. Such a measurement is
+	  not a property of the link, it is a corrupted measurement, so it is
+	  discarded and the last in range value is kept. This is the same
+	  tolerance that allowedLostResponses provides for missing Path Delay
+	  Responses, and it matches the detectedFaults and allowedFaults pair
+	  of IEEE 802.1AS-2020. Set to 0 to declare the port not capable on
+	  the first out of range measurement.
+
 config NET_GPTP_INIT_LOG_PDELAY_REQ_ITV
 	int "Set initial pdelay request interval in Log2 base"
 	default 0
