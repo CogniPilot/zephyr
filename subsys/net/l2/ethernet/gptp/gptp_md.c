@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stdint.h>
+
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(net_gptp, CONFIG_NET_GPTP_LOG_LEVEL);
 
@@ -301,7 +303,24 @@ static void gptp_md_compute_pdelay_rate_ratio(int port)
 	port_ds->neighbor_rate_ratio_valid = state->neighbor_rate_ratio_valid;
 }
 
-static void gptp_md_compute_prop_time(int port)
+/* Clamp a computed delay to what the log formatting can carry. */
+static inline int32_t gptp_md_prop_delay_print(double prop_delay)
+{
+	if (prop_delay > (double)INT32_MAX) {
+		return INT32_MAX;
+	}
+
+	if (prop_delay < (double)INT32_MIN) {
+		return INT32_MIN;
+	}
+
+	return (int32_t)prop_delay;
+}
+
+/* Returns the computed one way propagation delay in nanoseconds. The caller
+ * decides whether the result is plausible enough to be committed.
+ */
+static double gptp_md_compute_prop_time(int port)
 {
 	uint64_t t1_ns = 0U, t2_ns = 0U, t3_ns = 0U, t4_ns = 0U;
 	struct gptp_pdelay_resp_follow_up *fup;
@@ -352,9 +371,14 @@ static void gptp_md_compute_prop_time(int port)
 		t3_ns += (net_ntohll(hdr->correction_field) >> 16);
 	}
 
-	prop_time = t4_ns - t1_ns;
+	/* Signed arithmetic on purpose: a missing or out of order timestamp
+	 * has to surface as a large negative value that the plausibility
+	 * check in the caller rejects, instead of wrapping to a huge
+	 * positive one.
+	 */
+	prop_time = (double)(int64_t)(t4_ns - t1_ns);
 
-	turn_around = t3_ns - t2_ns;
+	turn_around = (double)(int64_t)(t3_ns - t2_ns);
 
 	/* Adjusting the turn-around time for peer to local clock rate
 	 * difference. The check is implemented the same way as how Avnu/gptp
@@ -370,7 +394,7 @@ static void gptp_md_compute_prop_time(int port)
 	prop_time -= turn_around;
 	prop_time /= 2;
 
-	port_ds->neighbor_prop_delay = prop_time;
+	return prop_time;
 }
 
 static void gptp_md_pdelay_compute(int port)
@@ -379,6 +403,8 @@ static void gptp_md_pdelay_compute(int port)
 	struct gptp_port_ds *port_ds;
 	struct gptp_hdr *hdr;
 	struct net_pkt *pkt;
+	double prop_delay = 0.0;
+	bool prop_delay_computed = false;
 	bool local_clock;
 
 	state = &GPTP_PORT_STATE(port)->pdelay_req;
@@ -396,10 +422,11 @@ static void gptp_md_pdelay_compute(int port)
 	}
 
 	if (port_ds->compute_neighbor_prop_delay) {
-		gptp_md_compute_prop_time(port);
+		prop_delay = gptp_md_compute_prop_time(port);
+		prop_delay_computed = true;
 
 		NET_DBG("Neighbor prop delay %d",
-			(int32_t)port_ds->neighbor_prop_delay);
+			gptp_md_prop_delay_print(prop_delay));
 	}
 
 	state->lost_responses = 0U;
@@ -420,21 +447,47 @@ static void gptp_md_pdelay_compute(int port)
 		goto out;
 	}
 
+	if (!prop_delay_computed) {
+		prop_delay = port_ds->neighbor_prop_delay;
+	}
+
 	/*
 	 * Currently, if the computed delay is negative, this means
-	 * that it is negligible enough compared to other factors.
+	 * that it is negligible enough compared to other factors, so small
+	 * negative values are accepted. A measurement outside +/- the
+	 * threshold is not a property of the link, it is a corrupted
+	 * measurement: discard it, keep the last in range value so that the
+	 * synchronization path is not disturbed, and withdraw asCapable only
+	 * once more than allowedFaults of them occur in a row. That is the
+	 * tolerance allowedLostResponses gives to missing responses, applied
+	 * to corrupted ones.
 	 */
-	if ((port_ds->neighbor_prop_delay <=
-	     port_ds->neighbor_prop_delay_thresh)) {
+	if ((prop_delay <= port_ds->neighbor_prop_delay_thresh) &&
+	    (prop_delay >= -port_ds->neighbor_prop_delay_thresh)) {
+		state->detected_faults = 0U;
+
+		if (prop_delay_computed) {
+			port_ds->neighbor_prop_delay = prop_delay;
+		}
+
 		port_ds->as_capable = true;
 	} else {
-		port_ds->as_capable = false;
-
-		NET_WARN("Not AS capable: %u ns > %u ns",
-			 (uint32_t)port_ds->neighbor_prop_delay,
-			 (uint32_t)port_ds->neighbor_prop_delay_thresh);
-
 		GPTP_STATS_INC(port, neighbor_prop_delay_exceeded);
+
+		if (state->detected_faults < port_ds->allowed_faults) {
+			state->detected_faults += 1U;
+
+			NET_WARN("Discarded path delay %d ns, fault %u of %u",
+				 gptp_md_prop_delay_print(prop_delay),
+				 state->detected_faults,
+				 port_ds->allowed_faults);
+		} else {
+			port_ds->as_capable = false;
+
+			NET_WARN("Not AS capable: %d ns outside +/- %u ns",
+				 gptp_md_prop_delay_print(prop_delay),
+				 (uint32_t)port_ds->neighbor_prop_delay_thresh);
+		}
 	}
 
 out:
@@ -485,6 +538,7 @@ static void gptp_md_start_pdelay_req(int port)
 	port_ds->is_measuring_delay = false;
 	port_ds->as_capable = false;
 	state->lost_responses = 0U;
+	state->detected_faults = 0U;
 	state->rcvd_pdelay_resp = 0U;
 	state->rcvd_pdelay_follow_up = 0U;
 	state->multiple_resp_count = 0U;
@@ -528,6 +582,7 @@ static void gptp_md_init_pdelay_req_state_machine(int port)
 	state->ini_resp_evt_tstamp = 0U;
 	state->ini_resp_ingress_tstamp = 0U;
 	state->lost_responses = 0U;
+	state->detected_faults = 0U;
 }
 
 static void gptp_md_init_pdelay_resp_state_machine(int port)

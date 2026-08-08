@@ -25,6 +25,7 @@ extern "C" {
 
 /* Parameters for PTP data sets. */
 #define GPTP_ALLOWED_LOST_RESP 3
+#define GPTP_ALLOWED_FAULTS CONFIG_NET_GPTP_ALLOWED_FAULTS
 
 #if defined(CONFIG_NET_GPTP_NEIGHBOR_PROP_DELAY_THR)
 #define GPTP_NEIGHBOR_PROP_DELAY_THR CONFIG_NET_GPTP_NEIGHBOR_PROP_DELAY_THR
@@ -407,6 +408,9 @@ struct gptp_port_ds {
 
 	/** Maximum number of Path Delay Requests without a response. */
 	uint16_t allowed_lost_responses;
+
+	/** Maximum number of consecutive out of range delay measurements. */
+	uint16_t allowed_faults;
 
 	/** Current Sync sequence id for this port. */
 	uint16_t sync_seq_id;

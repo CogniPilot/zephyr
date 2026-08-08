@@ -284,6 +284,12 @@ New APIs and options
     :c:func:`mdns_responder_disable_iface`
     (:kconfig:option:`CONFIG_MDNS_RESPONDER_RUNTIME_IFACE_CONTROL`) to enable or
     disable the mDNS responder on a network interface at runtime.
+  * Add :kconfig:option:`CONFIG_NET_GPTP_ALLOWED_FAULTS` to bound the run of
+    consecutive out of range path delay measurements a gPTP port tolerates.
+    Such measurements are now discarded instead of being applied, and
+    asCapable is withdrawn only after more than the configured number of them
+    (default 3) occur in a row, where previously a single one dropped
+    asCapable immediately.
 
 * Power Management
 
