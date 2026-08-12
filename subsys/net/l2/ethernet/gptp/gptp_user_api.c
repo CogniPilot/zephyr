@@ -7,6 +7,8 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(net_gptp, CONFIG_NET_GPTP_LOG_LEVEL);
 
+#include <string.h>
+
 #include <zephyr/drivers/ptp_clock.h>
 #include <zephyr/net/gptp.h>
 
@@ -63,6 +65,29 @@ int gptp_event_capture(struct net_ptp_time *slave_time, bool *gm_present)
 		/* Get first available clock, or slave clock if GM present. */
 		if (!*gm_present || (GPTP_GLOBAL_DS()->selected_role[port] ==
 				     GPTP_PORT_SLAVE)) {
+			clk = net_eth_get_ptp_clock(GPTP_PORT_IFACE(port));
+			if (clk) {
+				ptp_clock_get(clk, slave_time);
+				irq_unlock(key);
+				return 0;
+			}
+		}
+	}
+
+	/* No port is in the timeReceiver role. If this node is itself the
+	 * grandmaster, its own PHC is the served clock the domain follows.
+	 * Confirm the local clock identity is the announced grandmaster
+	 * identity, and return the PHC once a clockClass other than the
+	 * free-running default has been announced for it (a traceable source
+	 * configured through gptp_update_gm_quality()); a grandmaster still on
+	 * the default clockClass reports no capture.
+	 */
+	if (*gm_present &&
+	    memcmp(GPTP_GLOBAL_DS()->gm_priority.root_system_id.grand_master_id,
+		   GPTP_DEFAULT_DS()->clk_id, GPTP_CLOCK_ID_LEN) == 0 &&
+	    GPTP_GLOBAL_DS()->gm_priority.root_system_id.clk_quality.clock_class !=
+		    GPTP_CLASS_OTHER) {
+		for (port = GPTP_PORT_START; port <= GPTP_PORT_END; port++) {
 			clk = net_eth_get_ptp_clock(GPTP_PORT_IFACE(port));
 			if (clk) {
 				ptp_clock_get(clk, slave_time);

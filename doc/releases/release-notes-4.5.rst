@@ -300,6 +300,10 @@ New APIs and options
     node as a statically configured time receiver, so it can synchronize
     through IEEE 802.1AS automotive profile bridges that transmit no Announce
     messages.
+  * :c:func:`gptp_event_capture` now also returns a capture on the acting
+    grandmaster: once a clockClass other than the free-running default has
+    been announced for the node, its own PTP hardware clock is returned
+    instead of ``-EAGAIN``.
 
 * Power Management
 
