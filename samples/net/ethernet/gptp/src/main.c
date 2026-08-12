@@ -40,6 +40,24 @@ static void gptp_phase_dis_cb(uint8_t *gm_identity,
 
 static int init_app(void)
 {
+	/* Announce the clock attributes through the runtime API. The values
+	 * mirror the boot-time defaults, so the announced content does not
+	 * change; an application disciplining the clock from an external
+	 * reference would pass live values here instead.
+	 */
+	static const struct gptp_gm_quality quality = {
+		.clock_class = CONFIG_NET_GPTP_CLOCK_CLASS,
+		.clock_accuracy = CONFIG_NET_GPTP_CLOCK_ACCURACY,
+		.time_source = CONFIG_NET_GPTP_TIME_SOURCE,
+	};
+	static const struct gptp_time_properties time_properties = {
+		.cur_utc_offset = 37,
+		.time_traceable = true,
+	};
+
+	gptp_update_gm_quality(&quality);
+	gptp_update_time_properties(&time_properties);
+
 	gptp_register_phase_dis_cb(&phase_dis, gptp_phase_dis_cb);
 
 	return 0;
