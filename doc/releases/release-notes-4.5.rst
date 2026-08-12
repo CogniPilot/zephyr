@@ -296,6 +296,10 @@ New APIs and options
     asCapable is withdrawn only after more than the configured number of them
     (default 3) occur in a row, where previously a single one dropped
     asCapable immediately.
+  * Add :kconfig:option:`CONFIG_NET_GPTP_STATIC_TIME_RECEIVER` to operate the
+    node as a statically configured time receiver, so it can synchronize
+    through IEEE 802.1AS automotive profile bridges that transmit no Announce
+    messages.
 
 * Power Management
 
