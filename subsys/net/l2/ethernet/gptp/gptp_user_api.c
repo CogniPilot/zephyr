@@ -72,6 +72,27 @@ int gptp_event_capture(struct net_ptp_time *slave_time, bool *gm_present)
 		}
 	}
 
+	/* No port is a slave: on the grandmaster the served clock is this
+	 * node's own PHC. Return it as the disciplined domain time when the
+	 * served clockClass shows a disciplined source (GNSS-locked 6 or
+	 * holdover 7), not the free-running default.
+	 */
+	if (*gm_present) {
+		uint8_t clock_class = GPTP_GLOBAL_DS()->gm_priority.root_system_id
+					      .clk_quality.clock_class;
+
+		if (clock_class == 6U || clock_class == 7U) {
+			for (port = GPTP_PORT_START; port <= GPTP_PORT_END; port++) {
+				clk = net_eth_get_ptp_clock(GPTP_PORT_IFACE(port));
+				if (clk) {
+					ptp_clock_get(clk, slave_time);
+					irq_unlock(key);
+					return 0;
+				}
+			}
+		}
+	}
+
 	irq_unlock(key);
 	return -EAGAIN;
 }
