@@ -289,6 +289,14 @@ void gptp_call_phase_dis_cb(void);
 /**
  * @brief Get gPTP time.
  *
+ * @details With a grandmaster elsewhere in the domain, the time is
+ * captured from the PTP hardware clock of the port in the time-receiver
+ * role. On the acting grandmaster, where no port has that role, the
+ * node's own PTP hardware clock is captured once a clockClass other than
+ * the free-running default has been announced for it (a traceable source
+ * configured through gptp_update_gm_quality()); a grandmaster still on the
+ * default clockClass returns -EAGAIN.
+ *
  * @param slave_time A pointer to structure where timestamp will be saved.
  * @param gm_present A pointer to a boolean where status of the
  *        presence of a grand master will be saved.

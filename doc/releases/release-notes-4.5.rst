@@ -290,6 +290,10 @@ New APIs and options
     :kconfig:option:`CONFIG_NET_GPTP_CLOCK_CLASS` and
     :kconfig:option:`CONFIG_NET_GPTP_TIME_SOURCE` to set the boot-time
     defaults for these attributes.
+  * :c:func:`gptp_event_capture` now also returns a capture on the acting
+    grandmaster: once a clockClass other than the free-running default has
+    been announced for the node, its own PTP hardware clock is returned
+    instead of ``-EAGAIN``.
 
 * Power Management
 
