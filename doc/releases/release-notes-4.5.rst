@@ -284,6 +284,10 @@ New APIs and options
     :c:func:`mdns_responder_disable_iface`
     (:kconfig:option:`CONFIG_MDNS_RESPONDER_RUNTIME_IFACE_CONTROL`) to enable or
     disable the mDNS responder on a network interface at runtime.
+  * Add :kconfig:option:`CONFIG_NET_GPTP_STATIC_TIME_RECEIVER` to operate the
+    node as a statically configured time receiver, so it can synchronize
+    through IEEE 802.1AS automotive profile bridges that transmit no Announce
+    messages.
 
 * Power Management
 
