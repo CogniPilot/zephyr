@@ -643,6 +643,12 @@ New APIs and options
 
     * :c:func:`net_dhcpv4_server_set_address_validator_cb`
 
+  * gPTP
+
+    * :kconfig:option:`CONFIG_NET_GPTP_STATIC_TIME_RECEIVER` operates the node as a
+      statically configured time receiver, so it can synchronize through IEEE 802.1AS
+      automotive profile bridges that transmit no Announce messages.
+
   * LwM2M
 
     * :kconfig:option:`CONFIG_LWM2M_SEND_SCHEDULER`
