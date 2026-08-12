@@ -102,20 +102,30 @@ static void rm3100_stream_get_data(const struct device *dev)
 		return;
 	}
 
-	struct rtio_sqe *status_wr_sqe = rtio_sqe_acquire(data->rtio.ctx);
-	struct rtio_sqe *status_rd_sqe = rtio_sqe_acquire(data->rtio.ctx);
-	struct rtio_sqe *write_sqe = rtio_sqe_acquire(data->rtio.ctx);
-	struct rtio_sqe *read_sqe = rtio_sqe_acquire(data->rtio.ctx);
-	struct rtio_sqe *complete_sqe = rtio_sqe_acquire(data->rtio.ctx);
+	/*
+	 * Acquire the five SQEs of this read chain (status write/read, data
+	 * write/read, completion) as one array. rtio_sqe_acquire_array pushes
+	 * nothing until all five are held and rolls its own back on shortage,
+	 * so a partial acquire cannot orphan an SQE. The previous per-SQE
+	 * acquire plus rtio_sqe_drop_all freed every SQE queued on the shared
+	 * bus context, including ones still in flight from another chain, which
+	 * corrupted the pool and faulted the completion path under load.
+	 */
+	struct rtio_sqe *sqes[5];
 
-	if (!write_sqe || !read_sqe || !complete_sqe) {
+	if (rtio_sqe_acquire_array(data->rtio.ctx, ARRAY_SIZE(sqes), sqes) != 0) {
 		LOG_ERR("Failed to acquire RTIO SQEs");
-		rtio_sqe_drop_all(data->rtio.ctx);
 
 		data->stream.iodev_sqe = NULL;
 		rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
 		return;
 	}
+
+	struct rtio_sqe *status_wr_sqe = sqes[0];
+	struct rtio_sqe *status_rd_sqe = sqes[1];
+	struct rtio_sqe *write_sqe = sqes[2];
+	struct rtio_sqe *read_sqe = sqes[3];
+	struct rtio_sqe *complete_sqe = sqes[4];
 
 	uint8_t val;
 
