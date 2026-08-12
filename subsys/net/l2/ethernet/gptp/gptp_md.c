@@ -855,6 +855,26 @@ static void gptp_md_sync_send_state_machine(int port)
 	port_ds = GPTP_PORT_DS(port);
 
 	if ((!port_ds->ptt_port_enabled) || !port_ds->as_capable) {
+		/* A Sync waiting here for a transmit timestamp will never be
+		 * given one: the port that was to produce it is down or no
+		 * longer capable. Release it now. Leaving it in place drops
+		 * its reference on the floor at the next SEND_SYNC, which
+		 * loses a packet and its buffers from the pool for good, and
+		 * leaves the registered timestamp callback pointing at a
+		 * packet that is never transmitted again, so no later Sync
+		 * is ever timestamped and this machine never leaves
+		 * SEND_FUP. The callback is unregistered before the
+		 * reference is dropped, so it can never observe a freed
+		 * packet.
+		 */
+		gptp_sync_send_reset(port);
+
+		if (state->sync_ptr != NULL) {
+			net_pkt_unref(state->sync_ptr);
+			state->sync_ptr = NULL;
+		}
+
+		state->md_sync_timestamp_avail = false;
 		state->rcvd_md_sync = false;
 		state->state = GPTP_SYNC_SEND_INITIALIZING;
 
