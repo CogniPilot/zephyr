@@ -575,6 +575,13 @@ int icm45686_stream_init(const struct device *dev)
 			LOG_ERR("Failed to configure interrupt");
 		}
 
+		/* Start from a fully-disabled INT1 mask so only the streaming
+		 * submit path enables the sources it needs. Mirrors the APEX
+		 * (icm45686.c) and trigger (icm45686_trigger.c) init paths;
+		 * without it, stack garbage is written into INT1_CONFIG and can
+		 * assert a data-ready edge before the RTIO stream is armed.
+		 */
+		memset(&int_config, INV_IMU_DISABLE, sizeof(int_config));
 		err = icm456xx_set_config_int(&data->driver, INV_IMU_INT1, &int_config);
 		if (err) {
 			LOG_ERR("Failed to disable all INTs");
