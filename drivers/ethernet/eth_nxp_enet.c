@@ -722,6 +722,19 @@ static int eth_nxp_enet_init(const struct device *dev)
 	ENET_SetTxReclaim(&data->enet_handle, true, 0);
 #endif
 
+	/*
+	 * Pass all multicast frames to the stack. This MAC gates inbound multicast
+	 * through the group-address hash (GAUR/GALR), and a joined group is only
+	 * delivered once its hash bit is programmed. A node on the router-less mesh
+	 * must receive link-local groups off the wire (zenoh peer multicast, MLD,
+	 * IPv6 neighbor discovery), so the hash is opened to every multicast address
+	 * rather than relying on per-group installation. Per-group joins still OR
+	 * their bit in on top of this, and the extra reception cost is bounded on
+	 * the mesh segment.
+	 */
+	data->base->GAUR = 0xFFFFFFFFU;
+	data->base->GALR = 0xFFFFFFFFU;
+
 	ENET_ActiveRead(data->base);
 
 	LOG_DBG("%s MAC %02x:%02x:%02x:%02x:%02x:%02x",
