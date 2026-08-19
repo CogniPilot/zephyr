@@ -135,10 +135,18 @@ struct gnss_info {
 	uint32_t hdop;
 	/** Geoid separation in millimeters */
 	int32_t geoid_separation;
+	/** Estimated horizontal position accuracy in millimeters */
+	uint32_t horizontal_accuracy_mm;
+	/** Estimated vertical position accuracy in millimeters */
+	uint32_t vertical_accuracy_mm;
+	/** Estimated speed accuracy in millimeters per second */
+	uint32_t speed_accuracy_mm_s;
 	/** The fix status */
 	enum gnss_fix_status fix_status;
 	/** The fix quality */
 	enum gnss_fix_quality fix_quality;
+	/** True when the position and speed accuracy estimates are valid */
+	bool accuracy_valid;
 };
 
 /** GNSS time data structure */

@@ -62,8 +62,12 @@ void gnss_ubx_common_pvt_callback(struct modem_ubx *ubx, const struct ubx_frame 
 			.hdop = nav_pvt->nav.pdop * 10,
 			.geoid_separation = (nav_pvt->nav.height -
 						nav_pvt->nav.hmsl),
+			.horizontal_accuracy_mm = nav_pvt->nav.horiz_acc,
+			.vertical_accuracy_mm = nav_pvt->nav.vert_acc,
+			.speed_accuracy_mm_s = nav_pvt->nav.speed_acc,
 			.fix_status = fix_status,
 			.fix_quality = fix_quality,
+			.accuracy_valid = fix_status != GNSS_FIX_STATUS_NO_FIX,
 		},
 		.nav_data = {
 			.latitude = (int64_t)nav_pvt->nav.latitude * 100,
