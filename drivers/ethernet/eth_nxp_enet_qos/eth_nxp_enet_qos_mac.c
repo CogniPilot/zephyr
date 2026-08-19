@@ -405,6 +405,9 @@ static enum ethernet_hw_caps eth_nxp_enet_qos_get_capabilities(const struct devi
 {
 	enum ethernet_hw_caps caps = ETHERNET_LINK_100BASE | ETHERNET_LINK_10BASE;
 
+#if defined(CONFIG_NET_VLAN)
+	caps |= ETHERNET_HW_VLAN;
+#endif
 #if defined(CONFIG_NET_PROMISCUOUS_MODE)
 	caps |= ETHERNET_PROMISC_MODE;
 #endif
