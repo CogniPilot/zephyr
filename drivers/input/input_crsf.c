@@ -101,6 +101,7 @@ struct input_crsf_data {
 	atomic_t rx_input_errors;  /* UART chunk failed entry sanity (NULL/zero/oversized) */
 	atomic_t parser_overflows; /* Reassembly-buffer bound violation, parser reset */
 	atomic_t framing_errors;   /* Length counter spent when a byte was still expected */
+	atomic_t rx_buf_errors;    /* RX_RDY window fell outside an owned RX buffer */
 
 	/* RX State */
 	enum crsf_rx_state rx_state;
@@ -218,6 +219,7 @@ struct crsf_diagnostics input_crsf_get_diagnostics(const struct device *dev)
 		.rx_input_errors = atomic_get(&data->rx_input_errors),
 		.parser_overflows = atomic_get(&data->parser_overflows),
 		.framing_errors = atomic_get(&data->framing_errors),
+		.rx_buf_errors = atomic_get(&data->rx_buf_errors),
 	};
 }
 
@@ -518,14 +520,34 @@ static void crsf_uart_callback(const struct device *uart_dev, struct uart_event 
 		LOG_ERR("CRSF TX Aborted");
 		break;
 
-	case UART_RX_RDY:
-		atomic_add(&data->uart_rx_bytes, evt->data.rx.len);
+	case UART_RX_RDY: {
+		uint8_t *rx_buf = evt->data.rx.buf;
+		size_t rx_off = evt->data.rx.offset;
+		size_t rx_len = evt->data.rx.len;
+
+		/*
+		 * This driver owns the RX DMA buffers, so it can check the event
+		 * before trusting it. A valid UART_RX_RDY window must name one of
+		 * the two buffers we supplied and stay inside it. Anything else
+		 * means the async double-buffer bookkeeping is inconsistent (a
+		 * stale or corrupt buf pointer, or an offset/len that overran the
+		 * buffer swap), and parsing through it would dereference a wild
+		 * pointer. Drop such a chunk and record it instead.
+		 */
+		if ((rx_buf != data->rx_buf_a && rx_buf != data->rx_buf_b) || rx_len == 0 ||
+		    rx_off > CRSF_RX_BUF_SIZE || rx_len > (size_t)CRSF_RX_BUF_SIZE - rx_off) {
+			atomic_inc(&data->rx_buf_errors);
+			break;
+		}
+
+		atomic_add(&data->uart_rx_bytes, rx_len);
 #ifdef CRSF_INVALIDATE_CACHE
-		arch_dcache_invd_range(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
+		arch_dcache_invd_range(&rx_buf[rx_off], rx_len);
 #endif
 		/* Process received data chunk */
-		crsf_process_bytes(dev, &evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
+		crsf_process_bytes(dev, &rx_buf[rx_off], rx_len);
 		break;
+	}
 
 	case UART_RX_BUF_REQUEST:
 		/* Provide the next buffer to keep reception continuous */

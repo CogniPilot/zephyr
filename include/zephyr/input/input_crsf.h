@@ -224,6 +224,7 @@ struct crsf_diagnostics {
 	uint32_t rx_input_errors;
 	uint32_t parser_overflows;
 	uint32_t framing_errors;
+	uint32_t rx_buf_errors;
 };
 
 /** Retrieve a snapshot of the CRSF driver's diagnostic counters. */
