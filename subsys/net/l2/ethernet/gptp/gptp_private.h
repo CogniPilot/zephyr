@@ -23,6 +23,7 @@ extern "C" {
 /* Common defines for the gPTP stack. */
 #define GPTP_THREAD_WAIT_TIMEOUT_MS 1
 #define GPTP_MULTIPLE_PDELAY_RESP_WAIT (5 * 60 * MSEC_PER_SEC)
+#define GPTP_SERVO_MAX_PPB 500000.0
 
 #if defined(CONFIG_NET_GPTP_STATISTICS)
 #define GPTP_STATS_INC(port, var) (GPTP_PORT_PARAM_DS(port)->var++)
@@ -38,6 +39,8 @@ struct gptp_clock_data {
 	struct gptp_domain *domain;
 	/** pi control drift value */
 	double pi_drift;
+	/** Local PHC has accepted a clock-discipline update. */
+	bool synchronized;
 };
 
 extern struct gptp_clock_data gptp_clock;
@@ -128,6 +131,9 @@ static inline uint64_t gptp_timestamp_to_nsec(struct net_ptp_time *ts)
  * @return ppb value to adjust.
  */
 double gptp_servo_pi(int64_t nanosecond_diff);
+
+/** Reset the gPTP PI servo's accumulated correction. */
+void gptp_servo_reset(void);
 
 /**
  * @brief Change the port state

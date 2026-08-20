@@ -148,6 +148,9 @@ static void gptp_mi_rcv_sync_receipt_timeout(struct k_timer *timer)
 		state = &GPTP_PORT_STATE(port)->pss_rcv;
 		if (&state->rcv_sync_receipt_timeout_timer == timer) {
 			state->rcv_sync_receipt_timeout_timer_expired = true;
+			if (GPTP_GLOBAL_DS()->selected_role[port] == GPTP_PORT_SLAVE) {
+				gptp_clock.synchronized = false;
+			}
 		}
 
 		GPTP_STATS_INC(port, sync_receipt_timeout_count);
@@ -750,7 +753,9 @@ static void gptp_update_local_port_clock(void)
 	int64_t second_diff;
 	const struct device *clk;
 	struct net_ptp_time tm;
+	struct net_ptp_time previous_tm;
 	unsigned int key;
+	int ret;
 
 	state = &GPTP_STATE()->clk_slave_sync;
 	global_ds = GPTP_GLOBAL_DS();
@@ -803,13 +808,22 @@ static void gptp_update_local_port_clock(void)
 		bool underflow = false;
 
 		key = irq_lock();
-		ptp_clock_get(clk, &tm);
+		ret = ptp_clock_get(clk, &tm);
+		if (ret < 0) {
+			irq_unlock(key);
+			NET_WARN("Failed to read local clock (err %d)", ret);
+			gptp_clock.synchronized = false;
+			return;
+		}
+		previous_tm = tm;
 
 		if (second_diff < 0 && tm.second < -second_diff) {
 			NET_DBG("Do not set local clock because %lu < %ld",
 				(unsigned long int)tm.second,
 				(long int)-second_diff);
-			goto skip_clock_set;
+			irq_unlock(key);
+			gptp_clock.synchronized = false;
+			return;
 		}
 
 		tm.second += second_diff;
@@ -828,18 +842,54 @@ static void gptp_update_local_port_clock(void)
 			tm.second++;
 			tm.nanosecond -= NSEC_PER_SEC;
 		}
-		if (IS_ENABLED(CONFIG_NET_GPTP_MONITOR_SYNC_STATUS)) {
-			NET_INFO("Set local clock %"PRIu64".%09u", tm.second, tm.nanosecond);
-		}
-		ptp_clock_set(clk, &tm);
-
-	skip_clock_set:
+		ret = ptp_clock_set(clk, &tm);
 		irq_unlock(key);
+
+		if (ret < 0) {
+			NET_WARN("Failed to set local clock (err %d)", ret);
+			gptp_clock.synchronized = false;
+			return;
+		}
+
+		gptp_servo_reset();
+		ret = ptp_clock_rate_adjust(clk, 1.0);
+		if (ret < 0) {
+			NET_WARN("Failed to reset local clock rate (err %d)", ret);
+			gptp_clock.synchronized = false;
+			return;
+		}
+
+		gptp_clock.synchronized = true;
+		if (IS_ENABLED(CONFIG_NET_GPTP_MONITOR_SYNC_STATUS)) {
+			NET_INFO("Set local clock %"PRIu64".%09u from %"PRIu64".%09u "
+				 "(master %"PRIu64".%09u, local %"PRIu64".%09u)",
+				 tm.second, tm.nanosecond,
+				 previous_tm.second, previous_tm.nanosecond,
+				 global_ds->sync_receipt_time.second,
+				 (uint32_t)(global_ds->sync_receipt_time.fract_nsecond /
+					    GPTP_POW2_16),
+				 global_ds->sync_receipt_local_time / NSEC_PER_SEC,
+				 (uint32_t)(global_ds->sync_receipt_local_time %
+					    NSEC_PER_SEC));
+		}
 	} else {
 		double ppb = gptp_servo_pi(nanosecond_diff);
 
-		ptp_clock_rate_adjust(clk, 1.0 + (ppb / 1000000000.0));
+		ret = ptp_clock_rate_adjust(clk, 1.0 + (ppb / 1000000000.0));
+		if (ret < 0) {
+			NET_WARN("Failed to adjust local clock rate by %f ppb (err %d)",
+				 ppb, ret);
+			gptp_servo_reset();
+			ret = ptp_clock_rate_adjust(clk, 1.0);
+			if (ret < 0) {
+				NET_WARN("Failed to restore nominal local clock rate (err %d)",
+					 ret);
+			}
+			gptp_clock.synchronized = false;
+			return;
+		}
 
+		gptp_clock.synchronized = true;
 		if (IS_ENABLED(CONFIG_NET_GPTP_MONITOR_SYNC_STATUS)) {
 			NET_INFO("sync offset %9"PRId64" ns, freq offset %f ppb",
 				 nanosecond_diff, ppb);
