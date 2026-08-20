@@ -145,6 +145,28 @@ config NET_GPTP_USE_DEFAULT_CLOCK_UPDATE
 	help
 	  Use a default internal function to update port local clock.
 
+config NET_GPTP_CLOCK_STEP_THRESHOLD_NS
+	int "Local clock step threshold (ns)"
+	default 50000000
+	range 0 $(INT32_MAX)
+	help
+	  Master offset magnitude, in nanoseconds, at or above which the
+	  local clock is stepped (set directly) instead of being slewed
+	  through the PI servo. Below this threshold the residual offset is
+	  driven out gradually by the servo, whose correction saturates at
+	  500000 ppb, so a sub-threshold offset drains at no more than
+	  0.5 ms per second. The default 50000000 (50 ms) preserves the
+	  historical behavior.
+	  A pure time receiver may safely use a much lower threshold. It
+	  owns no timescale that other clocks consume: it neither serves
+	  Sync as grandmaster nor forwards time as a boundary clock, so a
+	  step of its local clock is not observable by any downstream node
+	  and cannot inject a phase jump into a timescale in use elsewhere.
+	  Lowering the threshold lets a receiver correct tens of
+	  milliseconds of accumulated residual in a single step rather than
+	  slewing it out over many seconds. The T1 deployment intends a
+	  low single-digit millisecond threshold on its time receivers.
+
 config NET_GPTP_PATH_TRACE_ELEMENTS
 	int "How many path trace elements to track"
 	default 8

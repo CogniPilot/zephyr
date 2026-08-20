@@ -803,8 +803,8 @@ static void gptp_update_local_port_clock(void)
 	 * Otherwise, adjust it.
 	 */
 	if (second_diff || (second_diff == 0 &&
-			    (nanosecond_diff < -50000000 ||
-			     nanosecond_diff > 50000000))) {
+			    (nanosecond_diff < -(int64_t)CONFIG_NET_GPTP_CLOCK_STEP_THRESHOLD_NS ||
+			     nanosecond_diff > (int64_t)CONFIG_NET_GPTP_CLOCK_STEP_THRESHOLD_NS))) {
 		bool underflow = false;
 
 		key = irq_lock();
