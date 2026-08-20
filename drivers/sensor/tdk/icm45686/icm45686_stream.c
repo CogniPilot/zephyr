@@ -30,6 +30,40 @@ enum icm45686_stream_state {
 	ICM45686_STREAM_BUSY = 2,
 };
 
+/*
+ * Both ignore paths in icm45686_event_handler can recur on every interrupt
+ * while a stream is stalled (for example when the consumer stops releasing
+ * RTIO buffers, so buffer acquisition keeps failing). Logging each occurrence
+ * floods the backend and, on a shared console, can starve the very threads that
+ * would clear the stall. Count occurrences instead and emit at most one summary
+ * per second, so the fault stays visible without flooding.
+ */
+static atomic_t icm45686_stream_busy_ignored;
+static atomic_t icm45686_no_submission_ignored;
+static int64_t icm45686_ignore_report_deadline;
+
+static void icm45686_report_ignored_events(void)
+{
+	int64_t now = k_uptime_get();
+	uint32_t busy;
+	uint32_t no_sub;
+
+	if (now < icm45686_ignore_report_deadline) {
+		return;
+	}
+	icm45686_ignore_report_deadline = now + 1000;
+
+	busy = (uint32_t)atomic_set(&icm45686_stream_busy_ignored, 0);
+	no_sub = (uint32_t)atomic_set(&icm45686_no_submission_ignored, 0);
+
+	if (busy != 0U) {
+		LOG_WRN("Ignored %u interrupt(s): event while a stream was in progress", busy);
+	}
+	if (no_sub != 0U) {
+		LOG_WRN("Ignored %u interrupt(s): callback before a streaming submission", no_sub);
+	}
+}
+
 static struct sensor_stream_trigger *get_read_config_trigger(const struct sensor_read_config *cfg,
 							     enum sensor_trigger_type trig)
 {
@@ -191,7 +225,8 @@ static void icm45686_event_handler(const struct device *dev)
 	int err;
 
 	if (!data->stream.iodev_sqe) {
-		LOG_WRN("Callback triggered before a streaming submission - Ignoring");
+		(void)atomic_inc(&icm45686_no_submission_ignored);
+		icm45686_report_ignored_events();
 		return;
 	}
 
@@ -216,7 +251,19 @@ static void icm45686_event_handler(const struct device *dev)
 	read_cfg = data->stream.iodev_sqe->sqe.iodev->data;
 
 	if (atomic_cas(&data->stream.state, ICM45686_STREAM_ON, ICM45686_STREAM_BUSY) == false) {
-		LOG_WRN("Event handler triggered while a stream is in progress! Ignoring");
+		/*
+		 * A data-ready edge arrived while the previous readout was still
+		 * in flight. The event is dropped here rather than serviced; the
+		 * DRDY interrupt is intentionally left armed so the very next
+		 * edge after completion is picked up. Disabling the interrupt on
+		 * entry to ICM45686_STREAM_BUSY (and re-arming from
+		 * icm45686_stream_submit) would remove these re-entries outright,
+		 * but that changes the pulse-mode interrupt timing for every user
+		 * of this driver and is deferred until it can be validated on
+		 * hardware.
+		 */
+		(void)atomic_inc(&icm45686_stream_busy_ignored);
+		icm45686_report_ignored_events();
 		return;
 	}
 
