@@ -14,6 +14,7 @@ LOG_MODULE_DECLARE(net_gptp, CONFIG_NET_GPTP_LOG_LEVEL);
 
 #include "gptp_messages.h"
 #include "gptp_data_set.h"
+#include "gptp_private.h"
 
 #include "net_private.h"
 
@@ -59,7 +60,11 @@ int gptp_event_capture(struct net_ptp_time *slave_time, bool *gm_present)
 	const struct device *clk;
 
 	key = irq_lock();
-	*gm_present =  GPTP_GLOBAL_DS()->gm_present;
+	*gm_present = GPTP_GLOBAL_DS()->gm_present;
+#if defined(CONFIG_NET_GPTP_STATIC_TIME_RECEIVER) && \
+	defined(CONFIG_NET_GPTP_USE_DEFAULT_CLOCK_UPDATE)
+	*gm_present = *gm_present && gptp_clock.synchronized;
+#endif
 
 	for (port = GPTP_PORT_START; port <= GPTP_PORT_END; port++) {
 		/* Get first available clock, or slave clock if GM present. */

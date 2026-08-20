@@ -193,7 +193,7 @@ static int ptp_clock_nxp_enet_init(const struct device *port)
 	data->base = (ENET_Type *)DEVICE_MMIO_GET(config->module_dev);
 
 	ret = pinctrl_apply_state(config->pincfg, PINCTRL_STATE_DEFAULT);
-	if (ret) {
+	if (ret && ret != -ENOENT) {
 		return ret;
 	}
 

@@ -1110,12 +1110,43 @@ double gptp_servo_pi(int64_t nanosecond_diff)
 {
 	double kp = 0.7;
 	double ki = 0.3;
+	double next_drift;
 	double ppb;
 
-	gptp_clock.pi_drift += ki * nanosecond_diff;
-	ppb = kp * nanosecond_diff + gptp_clock.pi_drift;
+	next_drift = gptp_clock.pi_drift + ki * nanosecond_diff;
+	ppb = kp * nanosecond_diff + next_drift;
+
+	/* A phase error can be many milliseconds immediately after a clock
+	 * step. Passing the resulting unconstrained correction to a PHC either
+	 * exceeds the hardware range or leaves a large accepted correction in
+	 * place while the integrator continues to wind up. Hold the integral
+	 * term while the output is saturated. An error of the opposite sign is
+	 * still allowed to unwind an existing integral correction.
+	 */
+	if (ppb > GPTP_SERVO_MAX_PPB) {
+		if (nanosecond_diff < 0) {
+			gptp_clock.pi_drift = MIN(next_drift, GPTP_SERVO_MAX_PPB);
+		}
+
+		return GPTP_SERVO_MAX_PPB;
+	}
+
+	if (ppb < -GPTP_SERVO_MAX_PPB) {
+		if (nanosecond_diff > 0) {
+			gptp_clock.pi_drift = MAX(next_drift, -GPTP_SERVO_MAX_PPB);
+		}
+
+		return -GPTP_SERVO_MAX_PPB;
+	}
+
+	gptp_clock.pi_drift = next_drift;
 
 	return ppb;
+}
+
+void gptp_servo_reset(void)
+{
+	gptp_clock.pi_drift = 0.0;
 }
 
 static void init_ports(void)
@@ -1137,7 +1168,8 @@ void net_gptp_init(void)
 	gptp_domain.default_ds.nb_ports = 0U;
 
 	gptp_clock.domain = &gptp_domain;
-	gptp_clock.pi_drift = 0.0;
+	gptp_servo_reset();
+	gptp_clock.synchronized = false;
 
 	init_ports();
 }
