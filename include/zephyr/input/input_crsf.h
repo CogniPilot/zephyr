@@ -221,6 +221,9 @@ struct crsf_diagnostics {
 	uint32_t uart_rx_stopped;
 	uint32_t uart_rx_restarts;
 	uint32_t uart_errors;
+	uint32_t rx_input_errors;
+	uint32_t parser_overflows;
+	uint32_t framing_errors;
 };
 
 /** Retrieve a snapshot of the CRSF driver's diagnostic counters. */

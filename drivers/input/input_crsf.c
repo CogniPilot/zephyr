@@ -98,6 +98,9 @@ struct input_crsf_data {
 	atomic_t uart_rx_stopped;
 	atomic_t uart_rx_restarts;
 	atomic_t uart_errors;
+	atomic_t rx_input_errors;  /* UART chunk failed entry sanity (NULL/zero/oversized) */
+	atomic_t parser_overflows; /* Reassembly-buffer bound violation, parser reset */
+	atomic_t framing_errors;   /* Length counter spent when a byte was still expected */
 
 	/* RX State */
 	enum crsf_rx_state rx_state;
@@ -212,6 +215,9 @@ struct crsf_diagnostics input_crsf_get_diagnostics(const struct device *dev)
 		.uart_rx_stopped = atomic_get(&data->uart_rx_stopped),
 		.uart_rx_restarts = atomic_get(&data->uart_rx_restarts),
 		.uart_errors = atomic_get(&data->uart_errors),
+		.rx_input_errors = atomic_get(&data->rx_input_errors),
+		.parser_overflows = atomic_get(&data->parser_overflows),
+		.framing_errors = atomic_get(&data->framing_errors),
 	};
 }
 
@@ -357,18 +363,47 @@ static void input_crsf_input_report_thread(const struct device *dev, void *dummy
 	}
 }
 
+/* Return the parser to the hunt-for-sync state. */
+static inline void crsf_reset_parser(struct input_crsf_data *data)
+{
+	data->rx_state = RX_STATE_SYNC;
+	data->xfer_bytes = 0;
+	data->payload_remaining = 0;
+}
+
 /*
  * Byte Processor: Implements State Machine
- * Called by the Async Callback
+ * Called by the Async Callback in UART ISR context.
+ *
+ * The (bytes, len) chunk comes straight from the async UART layer and is
+ * treated as untrusted: pointer and length are sanity-checked on entry, every
+ * store into rd_data is bounded, and every length decrement is guarded so a
+ * torn or malformed frame can reset the state machine but never walk off a
+ * buffer.
  */
 static void crsf_process_bytes(const struct device *dev, uint8_t *bytes, size_t len)
 {
 	struct input_crsf_data *const data = dev->data;
 
+	/*
+	 * A NULL or empty chunk carries nothing to parse, and a chunk larger
+	 * than one RX DMA buffer cannot be a valid delivery from this driver's
+	 * reception path. Drop it wholesale instead of dereferencing it.
+	 */
+	if (bytes == NULL || len == 0 || len > CRSF_RX_BUF_SIZE) {
+		atomic_inc(&data->rx_input_errors);
+		return;
+	}
+
 	for (int offset = 0; offset < len; offset++) {
 		switch (data->rx_state) {
 		case RX_STATE_SYNC:
 			/* logic: waiting for [SYNC, LEN, TYPE] sequence or just SYNC validation */
+			if (data->xfer_bytes >= sizeof(data->rd_data)) {
+				atomic_inc(&data->parser_overflows);
+				crsf_reset_parser(data);
+				break;
+			}
 			data->rd_data[data->xfer_bytes++] = bytes[offset];
 
 			if (data->rd_data[0] != CRSF_SYNC_BYTE) {
@@ -391,7 +426,18 @@ static void crsf_process_bytes(const struct device *dev, uint8_t *bytes, size_t 
 			break;
 
 		case RX_STATE_TYPE:
+			/* Len promised a type byte; if the counter is spent, reframe. */
+			if (data->payload_remaining == 0) {
+				atomic_inc(&data->framing_errors);
+				crsf_reset_parser(data);
+				break;
+			}
 			if (is_crsf_whitelisted(bytes[offset])) {
+				if (data->xfer_bytes >= sizeof(data->rd_data)) {
+					atomic_inc(&data->parser_overflows);
+					crsf_reset_parser(data);
+					break;
+				}
 				data->rx_state = RX_STATE_DATA;
 				data->rd_data[data->xfer_bytes++] = bytes[offset];
 				data->payload_remaining--;
@@ -404,17 +450,33 @@ static void crsf_process_bytes(const struct device *dev, uint8_t *bytes, size_t 
 			break;
 
 		case RX_STATE_IGNORE: {
+			/* Nothing left to skip but we never reframed: framing slip. */
+			if (data->payload_remaining == 0) {
+				atomic_inc(&data->framing_errors);
+				crsf_reset_parser(data);
+				break;
+			}
 			data->payload_remaining--;
 
 			/* If we've skipped everything, reset to SYNC */
 			if (data->payload_remaining == 0) {
-				data->rx_state = RX_STATE_SYNC;
-				data->xfer_bytes = 0;
+				crsf_reset_parser(data);
 			}
 			break;
 		}
 
 		case RX_STATE_DATA:
+			/* Expected payload/CRC byte but the counter is already spent. */
+			if (data->payload_remaining == 0) {
+				atomic_inc(&data->framing_errors);
+				crsf_reset_parser(data);
+				break;
+			}
+			if (data->xfer_bytes >= sizeof(data->rd_data)) {
+				atomic_inc(&data->parser_overflows);
+				crsf_reset_parser(data);
+				break;
+			}
 			data->rd_data[data->xfer_bytes++] = bytes[offset];
 			data->payload_remaining--;
 
@@ -428,8 +490,7 @@ static void crsf_process_bytes(const struct device *dev, uint8_t *bytes, size_t 
 				}
 
 				/* Reset for next frame */
-				data->rx_state = RX_STATE_SYNC;
-				data->xfer_bytes = 0;
+				crsf_reset_parser(data);
 			}
 			break;
 		}
