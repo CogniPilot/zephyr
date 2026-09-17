@@ -65,7 +65,6 @@ struct input_crsf_config {
 #define CRSF_CONNECTION_TIMEOUT_MS 200
 #define CRSF_TX_BUF_SIZE           CRSF_MAX_FRAME_LEN
 #define CRSF_RX_BUF_SIZE           (2 * CRSF_MAX_FRAME_LEN) /* Async RX DMA buffer size */
-#define CRSF_RX_TIMEOUT_US         1000                     /* Flush timeout for async RX */
 #define CRSF_QUEUE_SIZE            3
 
 #define REPORT_FILTER      CONFIG_INPUT_CRSF_REPORT_FILTER
@@ -570,8 +569,7 @@ static void crsf_uart_callback(const struct device *uart_dev, struct uart_event 
 	case UART_RX_DISABLED:
 		/* Restart RX if disabled (error recovery) */
 		data->rx_buf_current = data->rx_buf_a;
-		if (uart_rx_enable(uart_dev, data->rx_buf_a, CRSF_RX_BUF_SIZE,
-				   CRSF_RX_TIMEOUT_US) == 0) {
+		if (uart_rx_enable(uart_dev, data->rx_buf_a, CRSF_RX_BUF_SIZE, 0) == 0) {
 			atomic_inc(&data->uart_rx_restarts);
 		} else {
 			atomic_inc(&data->uart_errors);
@@ -625,9 +623,13 @@ static int input_crsf_init(const struct device *dev)
 
 	k_msgq_init(&data->rx_queue, data->rx_queue_slab, CRSF_MAX_FRAME_LEN, CRSF_QUEUE_SIZE);
 
-	/* Start Async RX */
-	ret = uart_rx_enable(config->uart_dev, data->rx_buf_a, CRSF_RX_BUF_SIZE,
-			     CRSF_RX_TIMEOUT_US);
+	/*
+	 * Start async RX with a zero receive timeout: the tail of every burst is
+	 * flushed straight from the UART idle-line interrupt. A non-zero timeout
+	 * would instead flush from the system workqueue, which the DMA completion
+	 * interrupt can preempt in the middle of parsing a frame.
+	 */
+	ret = uart_rx_enable(config->uart_dev, data->rx_buf_a, CRSF_RX_BUF_SIZE, 0);
 	if (ret < 0) {
 		LOG_ERR("Failed to enable UART RX: %d", ret);
 		return ret;
